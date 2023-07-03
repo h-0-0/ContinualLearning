@@ -7,9 +7,10 @@ from torch import arange
 from avalanche.benchmarks.classic import SplitCIFAR10
 from avalanche.models import SimpleCNN
 from torch.optim import Adam
-from avalanche.training.supervised.strategy_wrappers import Naive
 from torch.nn import CrossEntropyLoss
-
+from avalanche.training.templates import SupervisedTemplate
+from torchvision.datasets import CIFAR10
+from torchvision.transforms import ToTensor
 
 class FixedReplay(SupervisedPlugin):
 
@@ -77,11 +78,19 @@ model = SimpleCNN()
 # CREATE OPTIMIZER
 optimizer = Adam(model.parameters(), lr=0.0001)
 
+buffer_data = CIFAR10(
+    "data", 
+    download=True, 
+    train=True,
+    transform=ToTensor()
+)
+buffer_data = [pair + (-1,) for pair in buffer_data]
+
 # CREATE THE STRATEGY INSTANCE (NAIVE)
-cl_strategy = Naive(
+cl_strategy = SupervisedTemplate(
     model, optimizer,
-    criterion = CrossEntropyLoss(), train_epochs=1,
-    train_mb_size = 128, eval_mb_size = 128
+    CrossEntropyLoss(), train_mb_size=128, train_epochs=1, eval_mb_size=128,
+    plugins=[FixedReplay(FixedBuffer, buffer_data, max_size=200, bs1=100, bs2=28)]
 )
 
 # TRAINING LOOP
