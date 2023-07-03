@@ -9,7 +9,7 @@ from avalanche.training.templates import SupervisedTemplate
 from avalanche.evaluation.plot_utils import learning_curves_plot
 
 from model import VGG16
-from custom_plugins import FixedReplay
+from custom_plugins import FixedReplay, FixedBuffer
 import data as data
 import matplotlib.pyplot as plt
 
@@ -22,7 +22,7 @@ def get_model(model_name, device):
     model.to(device)
     return model
 
-def get_eval_plugin(log_tensorboard=True, log_text=True, log_stdout=True):
+def get_eval_plugin(log_tensorboard=True, log_text=False, log_stdout=True):
     """ Returns an evaluation plugin with the desired loggers."""
     if log_tensorboard:
         tb_logger = TensorboardLogger()
@@ -120,6 +120,7 @@ def regular(data_name, model_name, batch_size, learning_rate, epochs, load_model
         test_results.append(cl_strategy.eval(scenario.test_stream))
     print('Experiment completed')
     plot_results(eval_plugin, name="regular.png")
+    print("Plotted Results")
     # TODO: sort naming
 
 def fixed_replay_stratify(data_name, model_name, batch_size, learning_rate, epochs, load_model, save_model, n_tasks, device, optimizer_type, seed, data2_name, batch_ratio, percentage):
@@ -127,7 +128,7 @@ def fixed_replay_stratify(data_name, model_name, batch_size, learning_rate, epoc
     device = get_device(device)
 
     # GET DATA
-    scenario, fixed_buffer = data.get_data(data_name, data2_name, n_tasks=n_tasks, strategy={"name":"stratify", "percentage":percentage}) 
+    scenario, buffer_data = data.get_data(data_name, data2_name, n_tasks=n_tasks, strategy={"name":"stratify", "percentage":percentage}) 
 
     # CREATE MODEL
     model = get_model(model_name, device)
@@ -148,7 +149,7 @@ def fixed_replay_stratify(data_name, model_name, batch_size, learning_rate, epoc
         CrossEntropyLoss(), train_mb_size=batch_size, train_epochs=epochs, eval_mb_size=batch_size,
         evaluator=eval_plugin,
         device = device,
-        plugins=[FixedReplay(mem_size=200, bs1=bs_bench, bs2=bs_replay)]
+        plugins=[FixedReplay(FixedBuffer, buffer_data, max_size=200, bs1=bs_bench, bs2=bs_replay)]
     )
 
     # TRAINING LOOP
@@ -168,6 +169,7 @@ def fixed_replay_stratify(data_name, model_name, batch_size, learning_rate, epoc
         test_results.append(cl_strategy.eval(scenario.test_stream))
     print('Experiment completed')
     plot_results(eval_plugin, name="fixed_replay_stratify.png")
+    print("Plotted Results")
     # TODO: sort naming
 
 # TODO: implement load, save and checkpointing

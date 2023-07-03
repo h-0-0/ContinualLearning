@@ -46,7 +46,7 @@ if __name__ == "__main__":
     parser.add_argument("--data_name", type=str, help="Name of dataset to use", default="SplitCIFAR10")
     parser.add_argument("--model_name", type=str, help="Name of model to use", default="VGG16")
     parser.add_argument("--batch_size", type=int, help="Batch size", default=128)
-    parser.add_argument("--learning_rate", type=float, help="Learning rate", default=1e-3)
+    parser.add_argument("--learning_rate", type=float, help="Learning rate", default=0.0001)
     parser.add_argument("--epochs", type=int, help="Number of epochs", default=1)
 
     # Argument for loading model

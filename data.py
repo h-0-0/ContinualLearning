@@ -23,7 +23,7 @@ def stratify_split(dataset, percentage, seed=None):
     return data1_split, data2_split
 # TODO: check this is splitting correctly
 
-@dispatch(str, int)
+@dispatch(str)
 def get_data(name, n_tasks=5):
     """
     Function to get training and testing data
@@ -84,7 +84,7 @@ def get_data(name, n_tasks=5):
     else:
         raise Exception("Not given valid dataset name must be: MNIST, CIFAR10, SplitCIFAR10 or CIFAR100")
    
-@dispatch(str, str, int, dict)
+@dispatch(str, str)
 def get_data(name, name2, n_tasks=5, strategy={"name":"stratify", "percentage":0.5}):
     """
     Function to get training and testing data
@@ -96,11 +96,10 @@ def get_data(name, name2, n_tasks=5, strategy={"name":"stratify", "percentage":0
             - percentage : float between 0 and 1
     """
     if(name == "SplitCIFAR10"):
-        data = get_data("CIFAR10")
+        data = get_data("CIFAR10", n_tasks=n_tasks)
         if(name2 == "SplitCIFAR10"):
             test_data = data[1]
             if(strategy["name"] == "stratify"):
-                # If Stratify is in the name we use the balanced split with number being the % to be assigned to task 1, ie. each dataset has the same number of samples per class    
                 data1, data2 = stratify_split(data[0], strategy["percentage"])
                 scenario = nc_benchmark(
                     data1,
@@ -110,6 +109,7 @@ def get_data(name, name2, n_tasks=5, strategy={"name":"stratify", "percentage":0
                     seed=None, 
                     task_labels=True
                     )
+                data2 = [pair + (-1,) for pair in data2]
                 return (scenario, data2)
             else:
                 raise Exception("Not given valid dataset split method currently only support: stratify")
@@ -117,3 +117,5 @@ def get_data(name, name2, n_tasks=5, strategy={"name":"stratify", "percentage":0
             raise Exception("Not given valid dataset-2 name, currently only support partitioning SplitCIFAR10") 
     else:
         raise Exception("Not given valid dataset-1 name, currently only support: SplitCIFAR10")
+    
+# TODO: add task labels to data in first get_data call?

@@ -34,6 +34,6 @@ source ../pyvenv/bin/activate
 python main.py --epochs=10 --optimizer_type="Adam"
 
 # CL scenario where we stratify the SplitCIFAR10 dataset into two different datasets
-# python main.py --epochs=20 --optimizer_type="Adam" --strategy="fixed_replay_stratify" --data2_name="SplitCIFAR10" --batch_ratio=0.9 --percentage=0.9 
+# python main.py --epochs=10 --optimizer_type="Adam" --strategy="fixed_replay_stratify" --data2_name="SplitCIFAR10" --batch_ratio=0.9 --percentage=0.9 
 
 echo End Time: $(date)
