@@ -1,5 +1,5 @@
 from ray import tune
-from run import get_device, get_model, get_optimizer
+from utils import get_device, get_model, get_optimizer
 import data
 from avalanche.training.supervised.strategy_wrappers import Naive
 from torch.nn import CrossEntropyLoss
@@ -54,7 +54,7 @@ def run_config(config):
     tune.report(top_train_accuracy=max([result["Top1_Acc_Epoch"] for result in train_results]))
     tune.report(top_test_accuracy=max([result["Top1_Acc_Epoch"] for result in test_results]))
 
-def tune_hyperparameters(data_name, model_name, optimizer_type, selection_metric="top_test_accuracy"):
+def tune_hyperparams(data_name, model_name, optimizer_type, selection_metric="top_test_accuracy"):
     """ 
     Function to tune hyperparameters.
     We run tuning on the batch scenario.
@@ -90,7 +90,7 @@ def tune_hyperparameters(data_name, model_name, optimizer_type, selection_metric
     }
     analysis = tune.run(
         run_config, 
-        config= {"learning_rate": tune.grid_search([0.001, 0.01, 0.1])} | static_params
+        config= {**{"learning_rate": tune.grid_search([0.001, 0.01, 0.1])}, **static_params}
     )
     # Get dataframe for analysis and save it to csv
     df = analysis.dataframe()
