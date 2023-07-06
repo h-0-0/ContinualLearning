@@ -48,11 +48,13 @@ def run_config(config):
 
         # test also returns a dictionary which contains all the metric values
         test_results.append(cl_strategy.eval(scenario.test_stream))
-    # Report important metrics
-    tune.report(final_train_accuracy=train_results[-1]["Top1_Acc_Epoch"])
-    tune.report(final_test_accuracy=test_results[-1]["Top1_Acc_Epoch"])
-    tune.report(top_train_accuracy=max([result["Top1_Acc_Epoch"] for result in train_results]))
-    tune.report(top_test_accuracy=max([result["Top1_Acc_Epoch"] for result in test_results]))
+    print("Completed a run with config: ", config)
+    return {
+        "final_train_accuracy": test_results[-1]["Top1_Acc_Epoch"], 
+        "final_test_accuracy": test_results[-1]["Top1_Acc_Epoch"],
+        "top_train_accuracy": max([result["Top1_Acc_Epoch"] for result in train_results]),
+        "top_test_accuracy": max([result["Top1_Acc_Epoch"] for result in test_results])
+    }
 
 def tune_hyperparams(data_name, model_name, optimizer_type, selection_metric="top_test_accuracy"):
     """ 
@@ -88,12 +90,17 @@ def tune_hyperparams(data_name, model_name, optimizer_type, selection_metric="to
         "model_name": model_name,
         "optimizer_type": optimizer_type,
     }
-    analysis = tune.run(
-        run_config, 
-        config= {**{"learning_rate": tune.grid_search([0.001, 0.01, 0.1])}, **static_params}
+    trial_space = {
+        "learning_rate": tune.grid_search([0.001, 0.01, 0.1])
+    }
+    train_model = tune.with_resources(run_config, {"gpu": 1})
+    tuner = tune.Tuner(
+        train_model,
+        param_space=trial_space
     )
+    results = tuner.fit()
     # Get dataframe for analysis and save it to csv
-    df = analysis.dataframe()
+    df = results.dataframe()
     df.to_csv(save_name)
     # Get the best config
     best = df.loc[df[selection_metric].idxmax()]
