@@ -1,5 +1,5 @@
 from avalanche.logging import InteractiveLogger, TextLogger, TensorboardLogger, CSVLogger
-from model import VGG16
+from model import VGG16, ResNet18, ResNet50
 from avalanche.training.plugins import EvaluationPlugin
 from avalanche.evaluation.metrics import forgetting_metrics, accuracy_metrics, \
     loss_metrics, timing_metrics, cpu_usage_metrics, disk_usage_metrics, forward_transfer_metrics, bwt_metrics
@@ -7,10 +7,14 @@ from torch.optim import SGD, Adam
 from torch import cuda
 from plot import training_acc_plot
 
-def get_model(model_name, device):
+def get_model(model_name, device, num_classes):
     """ Returns the model with the given name and device."""
     if model_name == "VGG16":
-        model = VGG16()
+        model = VGG16(num_classes=num_classes)
+    elif model_name == "ResNet18":
+        model = ResNet18(num_classes=num_classes)
+    elif model_name == "ResNet50":
+        model = ResNet50(num_classes=num_classes)
     else:
         raise ValueError("Model not supported")
     model.to(device)

@@ -1,4 +1,4 @@
-from torch import cuda
+from torch import cuda, flatten
 from torch.nn import CrossEntropyLoss
 from avalanche.training.templates import SupervisedTemplate
 from avalanche.training.supervised.strategy_wrappers import Naive
@@ -12,7 +12,7 @@ from utils import get_eval_plugin, get_optimizer, get_device, plot_results, get_
 
 def regular(data_name, model_name, batch_size, learning_rate, epochs, load_model, save_model, n_tasks, device, optimizer_type, seed, early_stopping):
     # PERFORM/LOAD HYPERPARAMETER TUNING
-    tune_hyperparams(data_name, model_name, optimizer_type, selection_metric="top_test_accuracy")
+    # tune_hyperparams(data_name, model_name, optimizer_type, selection_metric="top_test_accuracy")
 
     # HANDLE DEVICE
     device = get_device(device)
@@ -21,7 +21,8 @@ def regular(data_name, model_name, batch_size, learning_rate, epochs, load_model
     scenario = data.get_data(data_name, n_tasks=n_tasks)
 
     # CREATE MODEL
-    model = get_model(model_name, device)
+    num_classes = len([item for sublist in scenario.original_classes_in_exp for item in sublist]) # so we set the output layer to the correct size
+    model = get_model(model_name, device, num_classes)
 
     # DEFINE THE EVALUATION PLUGIN and LOGGERS
     eval_plugin = get_eval_plugin(name="log/"+ data_name + "/" + model_name + "/" +"regular")
@@ -77,7 +78,8 @@ def fixed_replay_stratify(data_name, model_name, batch_size, learning_rate, epoc
     scenario, buffer_data = data.get_data(data_name, data2_name, n_tasks=n_tasks, strategy={"name":"stratify", "percentage":percentage}) 
 
     # CREATE MODEL
-    model = get_model(model_name, device)
+    num_classes = len([item for sublist in scenario.original_classes_in_exp for item in sublist]) # so we set the output layer to the correct size
+    model = get_model(model_name, device, num_classes)
 
     # DEFINE THE EVALUATION PLUGIN and LOGGERS
     eval_plugin = get_eval_plugin(name="log/"+ data_name + "/" + model_name + "/" +"fixed_replay_stratify") 
