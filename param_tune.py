@@ -11,6 +11,7 @@ def run_config(config):
     Runs the experiment with the given config in the batch scenario
     """
     # GET PARAMS FROM CONFIG
+    print("Running with config: ", config) #TODO: remove
     data_name = config["data_name"]
     model_name = config["model_name"]
     optimizer_type = config["optimizer_type"]
@@ -24,7 +25,8 @@ def run_config(config):
     scenario = data.get_data(data_name, n_tasks=1)
 
     # CREATE MODEL
-    model = get_model(model_name, device)
+    num_classes = len([item for sublist in scenario.original_classes_in_exp for item in sublist]) # so we set the output layer to the correct size
+    model = get_model(model_name, device, num_classes)
 
     # CREATE OPTIMIZER
     optimizer = get_optimizer(optimizer_type, model, learning_rate)
@@ -93,6 +95,7 @@ def tune_hyperparams(data_name, model_name, optimizer_type, selection_metric="to
     trial_space = {
         "learning_rate": tune.grid_search([0.001, 0.01, 0.1])
     }
+    trial_space = {**static_params, **trial_space}
     train_model = tune.with_resources(run_config, {"gpu": 1})
     tuner = tune.Tuner(
         train_model,
@@ -100,7 +103,7 @@ def tune_hyperparams(data_name, model_name, optimizer_type, selection_metric="to
     )
     results = tuner.fit()
     # Get dataframe for analysis and save it to csv
-    df = results.dataframe()
+    df = results.get_dataframe()
     df.to_csv(save_name)
     # Get the best config
     best = df.loc[df[selection_metric].idxmax()]
