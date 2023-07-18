@@ -4,21 +4,25 @@ from avalanche.training.templates import SupervisedTemplate
 from avalanche.training.supervised.strategy_wrappers import Naive
 from avalanche.training.plugins.early_stopping import EarlyStoppingPlugin
 
-from custom_plugins import FixedReplay, FixedBuffer
+from custom_plugins import BatchSplitReplay, FixedBuffer
 import data as data
 from param_tune import tune_hyperparams
-from utils import get_eval_plugin, get_optimizer, get_device, plot_results, get_model
+from utils import set_seed, get_eval_plugin, get_optimizer, get_device, plot_results, get_model, train_and_plot
 
 
-def regular(data_name, model_name, batch_size, learning_rate, epochs, load_model, save_model, n_tasks, device, optimizer_type, seed, early_stopping):
+def regular(data_name, model_name, batch_size, learning_rate, epochs, n_tasks, device, optimizer_type, seed, early_stopping):
+    # SET THE SEED 
+    set_seed(seed)
+
     # PERFORM/LOAD HYPERPARAMETER TUNING
-    # tune_hyperparams(data_name, model_name, optimizer_type, selection_metric="top_test_accuracy")
+    if learning_rate is None:
+        learning_rate = tune_hyperparams(data_name, model_name, optimizer_type, selection_metric="final_train_accuracy")
 
     # HANDLE DEVICE
     device = get_device(device)
 
     # GET DATA
-    scenario = data.get_data(data_name, n_tasks=n_tasks)
+    scenario = data.get_data(data_name, n_tasks=n_tasks, seed=seed)
 
     # CREATE MODEL
     num_classes = len([item for sublist in scenario.original_classes_in_exp for item in sublist]) # so we set the output layer to the correct size
@@ -47,62 +51,48 @@ def regular(data_name, model_name, batch_size, learning_rate, epochs, load_model
     )
 
     # TRAINING LOOP
-    print('Starting regular CL experiment...')
-    train_results = []
-    test_results = []
-    for experience in scenario.train_stream:
-        print("Start of experience: ", experience.current_experience)
-        print("Current Classes: ", experience.classes_in_this_experience)
+    train_and_plot(scenario, cl_strategy, eval_plugin, data_name + "/" + model_name + "/" + optimizer_type +  "/regular_lr_" + str(learning_rate))
 
-        # train returns a dictionary which contains all the metric values
-        train_results.append(cl_strategy.train(experience))
-        print('Training completed')
+def fixed_replay_stratify(data_name, model_name, batch_size, learning_rate, epochs, n_tasks, device, optimizer_type, seed, early_stopping, data2_name, batch_ratio, percentage):
+    # SET THE SEED 
+    set_seed(seed)
 
-        print('Computing accuracy on the whole test set')
-        # test also returns a dictionary which contains all the metric values
-        test_results.append(cl_strategy.eval(scenario.test_stream))
-    print("train_results: ", train_results) #TODO: remove
-    print("test_results: ", test_results) #TODO: remove
-    print('Experiment completed')
-    plot_results(eval_plugin, name="regular.png")
-    print("Plotted Results")
-
-def fixed_replay_stratify(data_name, model_name, batch_size, learning_rate, epochs, load_model, save_model, n_tasks, device, optimizer_type, seed, early_stopping, data2_name, batch_ratio, percentage):
     # PERFORM/LOAD HYPERPARAMETER TUNING
-    tune_hyperparams(data_name, model_name, optimizer_type, selection_metric="top_test_accuracy")
+    if learning_rate is None:
+        learning_rate = tune_hyperparams(data_name, model_name, optimizer_type, selection_metric="final_train_accuracy")
 
     # HANDLE DEVICE
     device = get_device(device)
 
     # GET DATA
-    scenario, buffer_data = data.get_data(data_name, data2_name, n_tasks=n_tasks, strategy={"name":"stratify", "percentage":percentage}) 
+    scenario, buffer_data = data.get_data(data_name, data2_name, n_tasks=n_tasks, strategy={"name":"stratify", "percentage":percentage}, seed=seed) 
 
     # CREATE MODEL
     num_classes = len([item for sublist in scenario.original_classes_in_exp for item in sublist]) # so we set the output layer to the correct size
     model = get_model(model_name, device, num_classes)
 
     # DEFINE THE EVALUATION PLUGIN and LOGGERS
-    eval_plugin = get_eval_plugin(name="log/"+ data_name + "/" + model_name + "/" +"fixed_replay_stratify") 
+    eval_plugin = get_eval_plugin(name="log/"+ data_name + "/" + model_name + "/fixed_replay_stratify/percent_" + str(percentage) + "/ratio_" + str(batch_ratio) ) 
 
     # SETUP OTHER PLUGINS
-    print("Length of buffer data: ", len(buffer_data)) #TODO: remove
+    # Construct batch sizes for benchmark and replay
+    bs_bench = int(batch_size*batch_ratio)
+    bs_replay = batch_size - bs_bench
+    # Construct the plugins
     if early_stopping > 0:
         plugins =[
-            FixedReplay(FixedBuffer, buffer_data, max_size=len(buffer_data), bs1=bs_bench, bs2=bs_replay),
+            BatchSplitReplay(FixedBuffer, buffer_data, max_size=len(buffer_data), bs1=bs_bench, bs2=bs_replay),
             EarlyStoppingPlugin(early_stopping, "train_stream")
         ]
     else:
         plugins = [
-            FixedReplay(FixedBuffer, buffer_data, max_size=len(buffer_data), bs1=bs_bench, bs2=bs_replay)
+            BatchSplitReplay(FixedBuffer, buffer_data, max_size=len(buffer_data), bs1=bs_bench, bs2=bs_replay)
         ]
 
     # CREATE OPTIMIZER
     optimizer = get_optimizer(optimizer_type, model, learning_rate)
 
     # CREATE THE STRATEGY INSTANCE
-    # Construct batch sizes for benchmark and replay
-    bs_bench = int(batch_size*batch_ratio)
-    bs_replay = batch_size - bs_bench
     # Construct the strategy
     cl_strategy = SupervisedTemplate(
         model, optimizer,
@@ -113,33 +103,17 @@ def fixed_replay_stratify(data_name, model_name, batch_size, learning_rate, epoc
     )
 
     # TRAINING LOOP
-    print('Starting fixed stratified stream experiment...')
-    train_results = []
-    test_results = []
-    for experience in scenario.train_stream:
-        print("Start of experience: ", experience.current_experience)
-        print("Current Classes: ", experience.classes_in_this_experience)
-
-        # train returns a dictionary which contains all the metric values
-        train_results.append(cl_strategy.train(experience))
-        print('Training completed')
-
-        print('Computing accuracy on the whole test set')
-        # test also returns a dictionary which contains all the metric values
-        test_results.append(cl_strategy.eval(scenario.test_stream))
-    print('Experiment completed')
-    plot_results(eval_plugin, name="fixed_replay_stratify.png")
-    print("Plotted Results")
+    train_and_plot(scenario, cl_strategy, eval_plugin, data_name + "/" + model_name + "/" + optimizer_type +  "/fixed_replay_stratify_percent_" + str(percentage) + "_ratio_" + str(batch_ratio) + "_lr_" + str(learning_rate))
 
 
-# TODO: do I need to collect train and test results?
-# TODO: implement seed
-# TODO: implement load, save and checkpointing
-# TODO: reorganise directory structure to better organize code
 # TODO: sort out plotting or remove it
+# TODO: create naming handler for plots, logs, checkpointing etc.
+    # TODO: if using tuning how should this be reflected in the name?
+# TODO: set the scipy RNG in set_seed so can remove the need for passing seed to get_data
+# TODO: add support for using multiple workers in dataloader and for working on cluster in ray tune
+# TODO: if you run experiment from checkpoint does logging continue from where it left off?
 
 # CHECK: max_size
 # CHECK: runs on correct device
 # CHECK: hyperparameter tuning
 # CHECK: early stopping
-# CHECK: stratify split 

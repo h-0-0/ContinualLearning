@@ -12,8 +12,6 @@ def main(args):
             batch_size = args.batch_size,
             learning_rate = args.learning_rate, 
             epochs = args.epochs,
-            load_model = args.load_model, 
-            save_model = args.save_model,
             n_tasks = args.n_tasks,
             device = args.device, 
             optimizer_type = args.optimizer_type, 
@@ -27,8 +25,6 @@ def main(args):
             batch_size = args.batch_size,
             learning_rate = args.learning_rate, 
             epochs = args.epochs,
-            load_model = args.load_model, 
-            save_model = args.save_model,
             n_tasks = args.n_tasks,
             device = args.device, 
             optimizer_type = args.optimizer_type, 
@@ -47,20 +43,10 @@ if __name__ == "__main__":
     # Arguments related to experiment
     parser.add_argument("--data_name", type=str, help="Name of dataset to use, default: 'SplitCIFAR10'", default="SplitCIFAR10")
     parser.add_argument("--model_name", type=str, help="Name of model to use, default: 'VGG16'", default="VGG16")
-    parser.add_argument("--batch_size", type=int, help="Batch size, default: 128", default=128)
-    parser.add_argument("--learning_rate", type=float, help="Learning rate, default: 0.0001", default=0.0001)
+    parser.add_argument("--batch_size", type=int, help="Batch size, default: 128", default=256)
+    parser.add_argument("--learning_rate", type=float, help="Learning rate if set will not perform tuning and will use the given learning rate, default: None", default=None)
     parser.add_argument("--epochs", type=int, help="Maximum number of epochs, default: 1", default=1)
-    parser.add_argument("--early_stopping", type=int, help="Number of epochs to wait before stopping (ie. the patience), if set to 0 then will turn off early stopping, default: 3", default=3)
-
-    # Argument for loading model
-    parser.add_argument('--load_model', action='store_true')
-    parser.add_argument('--no-load_model', dest='load_model', action='store_false')
-    parser.set_defaults(load_model=True)
-
-    # Argument for saving model
-    parser.add_argument('--save_model', action='store_true')
-    parser.add_argument('--no-save_model', dest='save_model', action='store_false')
-    parser.set_defaults(save_model=True)
+    parser.add_argument("--early_stopping", type=int, help="Number of epochs to wait before stopping (ie. the patience), if set to 0 then will turn off early stopping, default: 0", default=0)
 
     # Arguments related to CL
     parser.add_argument("--n_tasks", type=int, help="Number of tasks, default: 5", default=5)

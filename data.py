@@ -24,7 +24,7 @@ def stratify_split(dataset, percentage, seed=None):
 # TODO: check this is splitting correctly
 
 @dispatch(str)
-def get_data(name, n_tasks=5):
+def get_data(name, n_tasks=5, seed=None):
     """
     Function to get training and testing data
     downloads and stores data in folder named "data" if not already there
@@ -85,7 +85,7 @@ def get_data(name, n_tasks=5):
         raise Exception("Not given valid dataset name must be: MNIST, CIFAR10, SplitCIFAR10 or CIFAR100")
    
 @dispatch(str, str)
-def get_data(name, name2, n_tasks=5, strategy={"name":"stratify", "percentage":0.5}):
+def get_data(name, name2, n_tasks=5, strategy={"name":"stratify", "percentage":0.5}, seed=None):
     """
     Function to get training and testing data
     downloads and stores data in folder named "data" if not already there
@@ -100,13 +100,13 @@ def get_data(name, name2, n_tasks=5, strategy={"name":"stratify", "percentage":0
         if(name2 == "SplitCIFAR10"):
             test_data = data[1]
             if(strategy["name"] == "stratify"):
-                data1, data2 = stratify_split(data[0], strategy["percentage"])
+                data1, data2 = stratify_split(data[0], strategy["percentage"], seed=seed)
                 scenario = nc_benchmark(
                     data1,
                     test_data, 
                     n_experiences=n_tasks, 
                     shuffle=False, 
-                    seed=None, 
+                    seed=seed, 
                     task_labels=True
                     )
                 data2 = [pair + (-1,) for pair in data2]

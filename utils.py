@@ -2,10 +2,17 @@ from avalanche.logging import InteractiveLogger, TextLogger, TensorboardLogger, 
 from model import VGG16, ResNet18, ResNet50
 from avalanche.training.plugins import EvaluationPlugin
 from avalanche.evaluation.metrics import forgetting_metrics, accuracy_metrics, \
-    loss_metrics, timing_metrics, cpu_usage_metrics, disk_usage_metrics, forward_transfer_metrics, bwt_metrics
+    loss_metrics, timing_metrics, cpu_usage_metrics, disk_usage_metrics, forward_transfer_metrics, bwt_metrics, class_accuracy_metrics
 from torch.optim import SGD, Adam
 from torch import cuda
 from plot import training_acc_plot
+from avalanche.training.determinism.rng_manager import RNGManager
+from avalanche.training.checkpoint import maybe_load_checkpoint, save_checkpoint
+import os
+
+def set_seed(seed):
+    """Sets the seed for Python's `random`, NumPy, and PyTorch global generators"""
+    RNGManager.set_random_seeds(seed)
 
 def get_model(model_name, device, num_classes):
     """ Returns the model with the given name and device."""
@@ -38,10 +45,11 @@ def get_eval_plugin(name="log", log_tensorboard=True, log_stdout=True, log_csv=F
 
     eval_plugin = EvaluationPlugin(
         # Metrics that use training stream
-        accuracy_metrics(minibatch=True, epoch=True),
-        loss_metrics(minibatch=True, epoch=True),
+        accuracy_metrics(minibatch=True, epoch=True, stream=True), #TODO: remove stream?
+        loss_metrics(minibatch=True, epoch=True, stream=True), #TODO: remove stream?
+        class_accuracy_metrics(minibatch=True, epoch=True, stream=True), #TODO: remove stream?
         # Metrics that use evaluation stream
-        forward_transfer_metrics(experience=True, stream=True),
+        # forward_transfer_metrics(experience=True, stream=True), TODO: fix this
         bwt_metrics(experience=True, stream=True),
         # Other metrics
         cpu_usage_metrics(experience=True),
@@ -76,12 +84,43 @@ def get_device(device):
         pass
     return device
 
-def plot_results(eval_plugin, name=None):
+def train_and_plot(scenario, cl_strategy, eval_plugin, name):
+    """ Performs the training loop, supports checkpointing."""
+    fname = "checkpoints/"+name+".pkl"  # name of the checkpoint file
+    cl_strategy, initial_exp = maybe_load_checkpoint(cl_strategy, fname) # load from checkpoint if exists
+    # if checkpoint directory does not exist, create it
+    directory = fname[:-len(fname[-len(fname.split(os.path.sep)[-1])])]
+    if not os.path.exists(directory):
+        os.makedirs(directory)
+    print('Starting fixed stratified stream experiment...')
+    # for experience in scenario.train_stream:
+    for experience in scenario.train_stream[initial_exp:]:
+        print("Start of experience: ", experience.current_experience)
+        print("Current Classes: ", experience.classes_in_this_experience)
+
+        # we train
+        cl_strategy.train(experience)
+        print('Training completed')
+
+        # we evaluate
+        cl_strategy.eval(scenario.test_stream)
+        print("Eval completed")
+
+        # we checkpoint (save the model)
+        save_checkpoint(cl_strategy, fname)
+    print('Experiment completed')
+    plot_results(eval_plugin, fname="plots/"+name+".png")
+    print("Plotted Results")
+
+def plot_results(eval_plugin, fname=None):
     """ Plots the results from the metrics."""
     all_metrics = eval_plugin.get_all_metrics()
     fig = training_acc_plot(all_metrics)
     # Save the figure
-    if name is not None:
-        fig.savefig(name)
+    if fname is not None:
+        directory = fname[:-len(fname[-len(fname.split(os.path.sep)[-1])])]
+        if not os.path.exists(directory):
+            os.makedirs(directory)
+        fig.savefig(fname)
     else:
         fig.savefig("plots/"+"training_acc_plot.png")
