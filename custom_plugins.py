@@ -6,10 +6,13 @@ from avalanche.benchmarks.utils import AvalancheDataset
 from torch import arange
 
 
-class FixedReplay(SupervisedPlugin):
+class BatchSplitReplay(SupervisedPlugin):
 
     def __init__(self, storage_policy, buffer_data, max_size, bs1, bs2):
-        """ A simple replay plugin with reservoir sampling. """
+        """ 
+        Replay plugin that allows you to specify the batch split to be used during replay, 
+        ie. the number of samples to be used from the experience and from the buffer in each batch. 
+        """
         super().__init__()
         self.storage_policy = storage_policy(max_size=max_size)
         self.storage_policy.update_from_dataset(buffer_data)
@@ -20,7 +23,6 @@ class FixedReplay(SupervisedPlugin):
                             num_workers: int = 0, shuffle: bool = True,
                             **kwargs):
         """ Here we set the dataloader. We use a dataloader that can load samples from multiple datasets."""
-        print("Override the dataloader.")
         strategy.dataloader = MultiDatasetDataLoader(
             datasets = [strategy.adapted_dataset, self.storage_policy.buffer] ,
             batch_sizes = [self.bs1, self.bs2],
