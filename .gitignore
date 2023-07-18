@@ -162,3 +162,7 @@ cython_debug/
 
 # Other
 slurm*
+/log
+/plots
+/checkpoints
+/tuning
