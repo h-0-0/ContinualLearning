@@ -43,7 +43,7 @@ if __name__ == "__main__":
     # Arguments related to experiment
     parser.add_argument("--data_name", type=str, help="Name of dataset to use, default: 'SplitCIFAR10'", default="SplitCIFAR10")
     parser.add_argument("--model_name", type=str, help="Name of model to use, default: 'VGG16'", default="VGG16")
-    parser.add_argument("--batch_size", type=int, help="Batch size, default: 128", default=256)
+    parser.add_argument("--batch_size", type=int, help="Batch size, default: 256", default=256)
     parser.add_argument("--learning_rate", type=float, help="Learning rate if set will not perform tuning and will use the given learning rate, default: None", default=None)
     parser.add_argument("--epochs", type=int, help="Maximum number of epochs, default: 1", default=1)
     parser.add_argument("--early_stopping", type=int, help="Number of epochs to wait before stopping (ie. the patience), if set to 0 then will turn off early stopping, default: 0", default=0)

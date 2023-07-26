@@ -2,14 +2,16 @@
 #
 #
 #SBATCH --partition=gpu
-#SBATCH --gres=gpu:rtx_2080:1
-#SBATCH --job-name=Strat-VGG16
+#SBATCH --tasks-per-node=1
+#SBATCH --cpus-per-task=1
+#SBATCH --gres=gpu:1
+#SBATCH --job-name=0.5
 #SBATCH --nodes=1
-#SBATCH --time=1:00:00
-#SBATCH --mem=5G
+#SBATCH --time=10:00:00
+#SBATCH --mem=7G
 #SBATCH --account MATH021322
 
-
+# rtx_2080
 # Define executable
 export EXE=/bin/hostname
 
@@ -31,9 +33,9 @@ nvidia-smi --query-gpu=name --format=csv,noheader
 source ../pyvenv/bin/activate
 
 # Regular CL
-# python main.py --epochs=10 --optimizer_type="Adam" --model_name="ResNet50" 
+# python main.py --epochs=15 --optimizer_type="SGD" --model_name="VGG16"
 
 # CL scenario where we stratify the SplitCIFAR10 dataset into two different datasets
-python main.py --epochs=10 --optimizer_type="Adam" --strategy="fixed_replay_stratify" --data2_name="SplitCIFAR10" --batch_ratio=0.5 --percentage=0.5 --model_name="VGG16" 
+python main.py --epochs=15 --optimizer_type="SGD" --strategy="fixed_replay_stratify" --data2_name="SplitCIFAR10" --batch_ratio=0.5 --percentage=0.5 --model_name="VGG16"
 
 echo End Time: $(date)

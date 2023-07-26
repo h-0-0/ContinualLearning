@@ -1,4 +1,5 @@
 from ray import tune, init, shutdown, air
+from ray.air import session
 from utils import get_device, get_model, get_optimizer, get_eval_plugin
 import data
 from avalanche.training.supervised.strategy_wrappers import Naive
@@ -12,7 +13,6 @@ def run_config(config):
     Runs the experiment with the given config in the batch scenario
     """
     # GET PARAMS FROM CONFIG
-    print("Running with config: ", config) #TODO: remove
     data_name = config["data_name"]
     model_name = config["model_name"]
     optimizer_type = config["optimizer_type"]
@@ -36,16 +36,14 @@ def run_config(config):
     eval_plugin = get_eval_plugin(name="tune_log/"+ data_name + "/" + model_name + "/" + optimizer_type + "/lr_" + str(learning_rate) ) 
 
     # CREATE THE STRATEGY INSTANCE (NAIVE)
-    # uses early stopping with patience 3 and max 500 epochs
     cl_strategy = Naive(
         model, optimizer,
-        criterion = CrossEntropyLoss(), train_epochs=2,
+        criterion = CrossEntropyLoss(), train_epochs=200,
         train_mb_size = 256, eval_mb_size = 256,
         device = device,
         evaluator = eval_plugin,
         plugins = [EarlyStoppingPlugin(3, "train_stream")]
     )
-    # TODO: change epochs to 200 from 2
 
     # TRAINING LOOP
     for experience in scenario.train_stream:
@@ -55,13 +53,12 @@ def run_config(config):
         # we test the model on the full test stream
         cl_strategy.eval(scenario.test_stream)
     all_metrics = eval_plugin.get_all_metrics()
-    print(list(filter(lambda x: "Top1_Acc_Epoch" in x, eval_plugin.get_all_metrics().keys()))) #TODO: remove
-    print("Top1_Acc_Epoch/train_phase/train_stream/Task000: ", all_metrics["Top1_Acc_Epoch/train_phase/train_stream/Task000"][1]) #TODO: remove
-    print("Top1_Acc_Stream/eval_phase/test_stream/Task000: ", all_metrics["Top1_Acc_Stream/eval_phase/test_stream/Task000"][1]) #TODO: remove
-    return {
+    session.report(
+        {
         "final_train_accuracy": all_metrics["Top1_Acc_Epoch/train_phase/train_stream/Task000"][1][-1],
         "final_test_accuracy": all_metrics["Top1_Acc_Stream/eval_phase/test_stream/Task000"][1][-1],
-    }
+        }
+    )
 
 def tune_hyperparams(data_name, model_name, optimizer_type, selection_metric="final_train_accuracy"):
     """ 
@@ -80,20 +77,31 @@ def tune_hyperparams(data_name, model_name, optimizer_type, selection_metric="fi
             - final_train_accuracy
             - final_test_accuracy
     """
+    # Search space
+    lrs = [0.00001, 0.00005, 0.0001, 0.0005, 0.001, 0.005, 0.01, 0.05, 0.1, 0.5]
     # Get names
-    exp_name = "tune_results"
-    storage_path = "tuning/" + data_name + "/" + model_name + "/" + optimizer_type
+    exp_name = data_name + "_" + model_name + "_" + optimizer_type
+    storage_path = "/user/work/jd18380/ContinualLearning/tuning"
     experiment_path = f"{storage_path}/{exp_name}"
     # Check if tuning has already been done, if so load and return results
     try: 
-        restored_tuner = tune.Tuner.restore(experiment_path, trainable=run_config)
+        restored_tuner = tune.Tuner.restore(experiment_path, trainable=run_config, resume_errored=True)
         result_grid = restored_tuner.get_results()
-        best_lr = result_grid.get_best_result(metric=selection_metric, mode="max")
-        print("Best learning rate: ", best_lr["selection_metric"]) #TODO remove
-        return best_lr
+        tuned_lrs = []
+        for i in range(len(result_grid)):
+            try:
+                tuned_lrs.append(result_grid[i].metrics["config"]["learning_rate"])
+            except:
+                pass
+        if set(lrs) <=  set(tuned_lrs):
+            best_result= result_grid.get_best_result(metric=selection_metric, mode="max")
+            best_lr = best_result.metrics["config"]["learning_rate"]
+            return best_lr
+        else:
+            lrs = [lr for lr in lrs if lr not in tuned_lrs]
     except:
-        pass
-    init()
+        print("No tuner found, starting new tuning experiment")
+    init(ignore_reinit_error=True, num_cpus=1)
     static_params = {
         "data_name": data_name,
         "model_name": model_name,
@@ -101,9 +109,8 @@ def tune_hyperparams(data_name, model_name, optimizer_type, selection_metric="fi
         "should_checkpoint": True
     }
     trial_space = {
-        "learning_rate": tune.grid_search([0.001])
+        "learning_rate": tune.grid_search(lrs)
     }
-    # TODO: add more params to tune: [0.00001, 0.00005, 0.0001, 0.0005, 0.001, 0.005, 0.01, 0.05]
     trial_space = {**static_params, **trial_space}
     train_model = tune.with_resources(run_config, {"gpu": 1})
     tuner = tune.Tuner(
@@ -111,20 +118,17 @@ def tune_hyperparams(data_name, model_name, optimizer_type, selection_metric="fi
         param_space=trial_space,
         run_config=air.RunConfig(
             name=exp_name,
-            stop={"training_iteration": 100},
             checkpoint_config=air.CheckpointConfig(
                 checkpoint_score_attribute="final_train_accuracy",
-                num_to_keep=5,
+                checkpoint_score_order="max",
+                num_to_keep=2,
             ),
             storage_path=storage_path,
         )
     )
-    # TODO: check number of epochs, does it stop at 100? if so change stop to big num eg. 500
     result_grid = tuner.fit()
     shutdown()
-    best_lr = result_grid.get_best_result(metric=selection_metric, mode="max")
-    print("Best learning rate: ", best_lr) #TODO remove
-    print("Best learning rate: ", best_lr["selection_metric"]) #TODO remove
-    return best_lr
-
-# TODO: implement ray checkpointing
+    # best_result = result_grid.get_best_result(metric=selection_metric, mode="max")
+    # best_lr = best_result.metrics["config"]["learning_rate"]
+    # return best_lr
+    return tune_hyperparams(data_name, model_name, optimizer_type, selection_metric)

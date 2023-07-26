@@ -7,7 +7,7 @@ from avalanche.training.plugins.early_stopping import EarlyStoppingPlugin
 from custom_plugins import BatchSplitReplay, FixedBuffer
 import data as data
 from param_tune import tune_hyperparams
-from utils import set_seed, get_eval_plugin, get_optimizer, get_device, plot_results, get_model, train_and_plot
+from utils import set_seed, get_eval_plugin, get_optimizer, get_device, get_model, train_and_plot
 
 
 def regular(data_name, model_name, batch_size, learning_rate, epochs, n_tasks, device, optimizer_type, seed, early_stopping):
@@ -21,6 +21,9 @@ def regular(data_name, model_name, batch_size, learning_rate, epochs, n_tasks, d
     # HANDLE DEVICE
     device = get_device(device)
 
+    # CREATE NAME FOR LOGGING, CHECKPOINTING, ETC
+    name = data_name + "/" + model_name + "/" + optimizer_type +  "/regular/lr_" + str(learning_rate)
+
     # GET DATA
     scenario = data.get_data(data_name, n_tasks=n_tasks, seed=seed)
 
@@ -29,7 +32,7 @@ def regular(data_name, model_name, batch_size, learning_rate, epochs, n_tasks, d
     model = get_model(model_name, device, num_classes)
 
     # DEFINE THE EVALUATION PLUGIN and LOGGERS
-    eval_plugin = get_eval_plugin(name="log/"+ data_name + "/" + model_name + "/" +"regular")
+    eval_plugin = get_eval_plugin(name="log/"+ name)
 
     # SETUP OTHER PLUGINS
     if early_stopping > 0:
@@ -51,7 +54,7 @@ def regular(data_name, model_name, batch_size, learning_rate, epochs, n_tasks, d
     )
 
     # TRAINING LOOP
-    train_and_plot(scenario, cl_strategy, eval_plugin, data_name + "/" + model_name + "/" + optimizer_type +  "/regular_lr_" + str(learning_rate))
+    train_and_plot(scenario, cl_strategy, eval_plugin, name)
 
 def fixed_replay_stratify(data_name, model_name, batch_size, learning_rate, epochs, n_tasks, device, optimizer_type, seed, early_stopping, data2_name, batch_ratio, percentage):
     # SET THE SEED 
@@ -60,6 +63,9 @@ def fixed_replay_stratify(data_name, model_name, batch_size, learning_rate, epoc
     # PERFORM/LOAD HYPERPARAMETER TUNING
     if learning_rate is None:
         learning_rate = tune_hyperparams(data_name, model_name, optimizer_type, selection_metric="final_train_accuracy")
+
+    # CREATE NAME FOR LOGGING, CHECKPOINTING, ETC
+    name = data_name + "/" + model_name + "/" + optimizer_type +  "/fixed_replay_stratify/percent_" + str(percentage) + "_ratio_" + str(batch_ratio) + "_lr_" + str(learning_rate)
 
     # HANDLE DEVICE
     device = get_device(device)
@@ -72,7 +78,7 @@ def fixed_replay_stratify(data_name, model_name, batch_size, learning_rate, epoc
     model = get_model(model_name, device, num_classes)
 
     # DEFINE THE EVALUATION PLUGIN and LOGGERS
-    eval_plugin = get_eval_plugin(name="log/"+ data_name + "/" + model_name + "/fixed_replay_stratify/percent_" + str(percentage) + "/ratio_" + str(batch_ratio) ) 
+    eval_plugin = get_eval_plugin(name="log/"+ name) 
 
     # SETUP OTHER PLUGINS
     # Construct batch sizes for benchmark and replay
@@ -103,17 +109,12 @@ def fixed_replay_stratify(data_name, model_name, batch_size, learning_rate, epoc
     )
 
     # TRAINING LOOP
-    train_and_plot(scenario, cl_strategy, eval_plugin, data_name + "/" + model_name + "/" + optimizer_type +  "/fixed_replay_stratify_percent_" + str(percentage) + "_ratio_" + str(batch_ratio) + "_lr_" + str(learning_rate))
+    train_and_plot(scenario, cl_strategy, eval_plugin, name)
 
-
+# TODO: add lr sheduling
 # TODO: sort out plotting or remove it
-# TODO: create naming handler for plots, logs, checkpointing etc.
-    # TODO: if using tuning how should this be reflected in the name?
 # TODO: set the scipy RNG in set_seed so can remove the need for passing seed to get_data
-# TODO: add support for using multiple workers in dataloader and for working on cluster in ray tune
 # TODO: if you run experiment from checkpoint does logging continue from where it left off?
 
 # CHECK: max_size
 # CHECK: runs on correct device
-# CHECK: hyperparameter tuning
-# CHECK: early stopping

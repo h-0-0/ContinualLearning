@@ -45,9 +45,9 @@ def get_eval_plugin(name="log", log_tensorboard=True, log_stdout=True, log_csv=F
 
     eval_plugin = EvaluationPlugin(
         # Metrics that use training stream
-        accuracy_metrics(minibatch=True, epoch=True, stream=True), #TODO: remove stream?
-        loss_metrics(minibatch=True, epoch=True, stream=True), #TODO: remove stream?
-        class_accuracy_metrics(minibatch=True, epoch=True, stream=True), #TODO: remove stream?
+        accuracy_metrics(minibatch=True, epoch=True, stream=True), 
+        loss_metrics(minibatch=True, epoch=True, stream=True), 
+        class_accuracy_metrics(minibatch=True, epoch=True, stream=True),
         # Metrics that use evaluation stream
         # forward_transfer_metrics(experience=True, stream=True), TODO: fix this
         bwt_metrics(experience=True, stream=True),
@@ -89,7 +89,7 @@ def train_and_plot(scenario, cl_strategy, eval_plugin, name):
     fname = "checkpoints/"+name+".pkl"  # name of the checkpoint file
     cl_strategy, initial_exp = maybe_load_checkpoint(cl_strategy, fname) # load from checkpoint if exists
     # if checkpoint directory does not exist, create it
-    directory = fname[:-len(fname[-len(fname.split(os.path.sep)[-1])])]
+    directory = fname[0:[pos for pos, char in enumerate(fname) if char == "/"][-1]]
     if not os.path.exists(directory):
         os.makedirs(directory)
     print('Starting fixed stratified stream experiment...')
