@@ -72,7 +72,9 @@ def fixed_replay_stratify(data_name, model_name, batch_size, learning_rate, epoc
 
     # GET DATA
     scenario, buffer_data = data.get_data(data_name, data2_name, n_tasks=n_tasks, strategy={"name":"stratify", "percentage":percentage}, seed=seed) 
-
+    print(scenario)
+    print(scenario.streams())
+    return None
     # CREATE MODEL
     num_classes = len([item for sublist in scenario.original_classes_in_exp for item in sublist]) # so we set the output layer to the correct size
     model = get_model(model_name, device, num_classes)
@@ -111,6 +113,7 @@ def fixed_replay_stratify(data_name, model_name, batch_size, learning_rate, epoc
     # TRAINING LOOP
     train_and_plot(scenario, cl_strategy, eval_plugin, name)
 
+# TODO: class specific metrics not recording correctly for stratify strategy, either fix or create custom metric
 # TODO: add lr sheduling
 # TODO: sort out plotting or remove it
 # TODO: set the scipy RNG in set_seed so can remove the need for passing seed to get_data
