@@ -166,3 +166,4 @@ slurm*
 /plots
 /checkpoints
 /tuning
+/.venv
