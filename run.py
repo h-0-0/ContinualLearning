@@ -32,7 +32,7 @@ def regular(data_name, model_name, batch_size, learning_rate, epochs, n_tasks, d
     model = get_model(model_name, device, num_classes)
 
     # DEFINE THE EVALUATION PLUGIN and LOGGERS
-    eval_plugin = get_eval_plugin(name="log/"+ name)
+    eval_plugin = get_eval_plugin(name="log/"+ name, track_classes=[j for i in scenario.original_classes_in_exp for j in i])
 
     # SETUP OTHER PLUGINS
     if early_stopping > 0:
@@ -72,15 +72,13 @@ def fixed_replay_stratify(data_name, model_name, batch_size, learning_rate, epoc
 
     # GET DATA
     scenario, buffer_data = data.get_data(data_name, data2_name, n_tasks=n_tasks, strategy={"name":"stratify", "percentage":percentage}, seed=seed) 
-    print(scenario)
-    print(scenario.streams())
-    return None
+
     # CREATE MODEL
     num_classes = len([item for sublist in scenario.original_classes_in_exp for item in sublist]) # so we set the output layer to the correct size
     model = get_model(model_name, device, num_classes)
 
     # DEFINE THE EVALUATION PLUGIN and LOGGERS
-    eval_plugin = get_eval_plugin(name="log/"+ name) 
+    eval_plugin = get_eval_plugin(name="log/"+ name, track_classes=[j for i in scenario.original_classes_in_exp for j in i]) 
 
     # SETUP OTHER PLUGINS
     # Construct batch sizes for benchmark and replay
@@ -118,6 +116,7 @@ def fixed_replay_stratify(data_name, model_name, batch_size, learning_rate, epoc
 # TODO: sort out plotting or remove it
 # TODO: set the scipy RNG in set_seed so can remove the need for passing seed to get_data
 # TODO: if you run experiment from checkpoint does logging continue from where it left off?
+# TODO: get it working on MNIST and CIFAR100
 
 # CHECK: max_size
 # CHECK: runs on correct device

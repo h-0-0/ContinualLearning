@@ -2,10 +2,10 @@ from torchvision.datasets import MNIST, CIFAR10, CIFAR100
 from sklearn.model_selection import train_test_split
 from avalanche.benchmarks.classic import SplitCIFAR10
 from avalanche.benchmarks.generators import nc_benchmark
+from avalanche.benchmarks.utils import make_classification_dataset
 from torchvision.transforms import ToTensor
 from torch.utils.data import Subset
 from multipledispatch import dispatch
-
 
 def stratify_split(dataset, percentage, seed=None):
     """
@@ -79,7 +79,7 @@ def get_data(name, n_tasks=5, seed=None):
         data = (training_data[0], test_data)
         return data
     elif(name == "SplitCIFAR10"):
-        data = SplitCIFAR10(n_experiences=n_tasks, shuffle=False)
+        data = SplitCIFAR10(n_experiences=n_tasks, shuffle=False, return_task_id=False)
         return data
     else:
         raise Exception("Not given valid dataset name must be: MNIST, CIFAR10, SplitCIFAR10 or CIFAR100")
@@ -107,9 +107,10 @@ def get_data(name, name2, n_tasks=5, strategy={"name":"stratify", "percentage":0
                     n_experiences=n_tasks, 
                     shuffle=False, 
                     seed=seed, 
-                    task_labels=True
+                    task_labels=False
                     )
-                data2 = [pair + (-1,) for pair in data2]
+                data2 = make_classification_dataset(data2, task_labels=-1)
+                #TODO: declare task labels?
                 return (scenario, data2)
             else:
                 raise Exception("Not given valid dataset split method currently only support: stratify")
@@ -117,5 +118,6 @@ def get_data(name, name2, n_tasks=5, strategy={"name":"stratify", "percentage":0
             raise Exception("Not given valid dataset-2 name, currently only support partitioning SplitCIFAR10") 
     else:
         raise Exception("Not given valid dataset-1 name, currently only support: SplitCIFAR10")
-    
-# TODO: add task labels to data in first get_data call?
+
+# TODO: does forwards metric now work?  
+# TODO: make it so all datasets are avalanche datasets

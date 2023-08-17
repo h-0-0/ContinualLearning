@@ -27,7 +27,7 @@ def get_model(model_name, device, num_classes):
     model.to(device)
     return model
 
-def get_eval_plugin(name="log", log_tensorboard=True, log_stdout=True, log_csv=False, log_text=False):
+def get_eval_plugin(name="log", log_tensorboard=True, log_stdout=True, log_csv=False, log_text=False, track_classes=None):
     """ Returns an evaluation plugin with the desired loggers."""
     loggers = []
     if log_tensorboard:
@@ -47,9 +47,9 @@ def get_eval_plugin(name="log", log_tensorboard=True, log_stdout=True, log_csv=F
         # Metrics that use training stream
         accuracy_metrics(minibatch=True, epoch=True, stream=True), 
         loss_metrics(minibatch=True, epoch=True, stream=True), 
-        class_accuracy_metrics(minibatch=True, epoch=True, stream=True),
+        class_accuracy_metrics(classes=track_classes, minibatch=True, epoch=True, stream=True),
         # Metrics that use evaluation stream
-        # forward_transfer_metrics(experience=True, stream=True), TODO: fix this
+        # forward_transfer_metrics(experience=True, stream=True),
         bwt_metrics(experience=True, stream=True),
         # Other metrics
         cpu_usage_metrics(experience=True),

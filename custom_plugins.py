@@ -15,7 +15,7 @@ class BatchSplitReplay(SupervisedPlugin):
         """
         super().__init__()
         self.storage_policy = storage_policy(max_size=max_size)
-        self.storage_policy.update_from_dataset(buffer_data)
+        self.storage_policy.buffer = buffer_data
         self.bs1 = bs1
         self.bs2 = bs2
 
@@ -37,7 +37,6 @@ class BatchSplitReplay(SupervisedPlugin):
         """ We update the buffer after the experience.
             You can use a different callback to update the buffer in a different place
         """
-        print("Buffer update.")
         self.storage_policy.update(strategy, **kwargs)
 
 class FixedBuffer(ExemplarsBuffer):
@@ -51,12 +50,12 @@ class FixedBuffer(ExemplarsBuffer):
         """Update buffer. We wish not to update the buffer automatically."""
         pass
 
-    def update_from_dataset(self, new_data: AvalancheDataset):
-        """Replaces buffer with the given dataset.
+    # def update_from_dataset(self, new_data: AvalancheDataset):
+    #     """Replaces buffer with the given dataset.
 
-        :param new_data: the new dataset
-        """
-        self.buffer = new_data
+    #     :param new_data: the new dataset
+    #     """
+    #     self.buffer = new_data
 
     def resize(self, strategy: Any, new_size: int):
         """Update the maximum size of the buffer."""
