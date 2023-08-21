@@ -21,7 +21,6 @@ def stratify_split(dataset, percentage, seed=None):
     data1_split = Subset(dataset, data1_indices)
     data2_split = Subset(dataset, data2_indices)
     return data1_split, data2_split
-# TODO: check this is splitting correctly
 
 @dispatch(str)
 def get_data(name, n_tasks=5, seed=None):
@@ -110,7 +109,6 @@ def get_data(name, name2, n_tasks=5, strategy={"name":"stratify", "percentage":0
                     task_labels=False
                     )
                 data2 = make_classification_dataset(data2, task_labels=-1)
-                #TODO: declare task labels?
                 return (scenario, data2)
             else:
                 raise Exception("Not given valid dataset split method currently only support: stratify")
@@ -119,5 +117,4 @@ def get_data(name, name2, n_tasks=5, strategy={"name":"stratify", "percentage":0
     else:
         raise Exception("Not given valid dataset-1 name, currently only support: SplitCIFAR10")
 
-# TODO: does forwards metric now work?  
 # TODO: make it so all datasets are avalanche datasets

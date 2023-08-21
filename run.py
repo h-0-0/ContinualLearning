@@ -1,14 +1,15 @@
-from torch import cuda, flatten
+from torch import cuda, flatten, stack
 from torch.nn import CrossEntropyLoss
 from avalanche.training.templates import SupervisedTemplate
 from avalanche.training.supervised.strategy_wrappers import Naive
 from avalanche.training.plugins.early_stopping import EarlyStoppingPlugin
+import torchvision.transforms as transforms
 
 from custom_plugins import BatchSplitReplay, FixedBuffer
 import data as data
 from param_tune import tune_hyperparams
-from utils import set_seed, get_eval_plugin, get_optimizer, get_device, get_model, train_and_plot
-
+from utils import set_seed, get_eval_plugin, get_optimizer, get_device, get_model, train, pretrain
+import self_supervised as ss
 
 def regular(data_name, model_name, batch_size, learning_rate, epochs, n_tasks, device, optimizer_type, seed, early_stopping):
     # SET THE SEED 
@@ -54,7 +55,7 @@ def regular(data_name, model_name, batch_size, learning_rate, epochs, n_tasks, d
     )
 
     # TRAINING LOOP
-    train_and_plot(scenario, cl_strategy, eval_plugin, name)
+    train(scenario, cl_strategy, name)
 
 def fixed_replay_stratify(data_name, model_name, batch_size, learning_rate, epochs, n_tasks, device, optimizer_type, seed, early_stopping, data2_name, batch_ratio, percentage):
     # SET THE SEED 
@@ -109,7 +110,81 @@ def fixed_replay_stratify(data_name, model_name, batch_size, learning_rate, epoc
     )
 
     # TRAINING LOOP
-    train_and_plot(scenario, cl_strategy, eval_plugin, name)
+    train(scenario, cl_strategy, name)
+
+def ssl(data_name, model_name, batch_size, learning_rate, temperature, epochs, n_tasks, device, optimizer_type, seed, early_stopping):
+    # SET THE SEED 
+    set_seed(seed)
+
+    # PERFORM/LOAD HYPERPARAMETER TUNING
+    if learning_rate is None:
+        # TODO: change to SSL version, add temperature as hyperparameter, also l2 norm param?
+        learning_rate = tune_hyperparams(data_name, model_name, optimizer_type, selection_metric="final_train_accuracy")
+
+    # CREATE NAME FOR LOGGING, CHECKPOINTING, ETC
+    name = data_name + "/" + model_name + "/" + optimizer_type +  "/ssl/lr_" + str(learning_rate)
+
+    # HANDLE DEVICE
+    device = get_device(device)
+
+    # GET DATA
+    # TODO: needs SSL version?
+    scenario = data.get_data(data_name, n_tasks=n_tasks, seed=seed) 
+
+    # CREATE MODEL
+    num_classes = len([item for sublist in scenario.original_classes_in_exp for item in sublist]) # so we set the output layer to the correct size
+    model = get_model("SimCLR_" + model_name, device, num_classes)
+
+    # DEFINE THE EVALUATION PLUGIN and LOGGERS
+    eval_plugin = get_eval_plugin(name="log/"+ name, track_classes=[j for i in scenario.original_classes_in_exp for j in i]) 
+
+    # SETUP OTHER PLUGINS
+    # Construct the plugins
+    if early_stopping > 0:
+        plugins =[
+            EarlyStoppingPlugin(early_stopping, "train_stream")
+        ]
+    else:
+        plugins = []
+
+    # CREATE OPTIMIZER
+    optimizer = get_optimizer(optimizer_type, model, learning_rate)
+
+    # DEFINE THE AUGMENTATIONS
+    # we define lambda functions for the augmentations
+    _, og_height, og_width = scenario.original_train_dataset[0][0].shape
+    random_resized_crop_lambda = transforms.Lambda(
+        lambda imgs: 
+            stack(
+                [transforms.RandomResizedCrop(size=(og_height, og_width), scale=(0.2, 0.8))(img) for img in imgs]
+            )
+    )
+    color_distort_lambda = transforms.Lambda(
+        lambda imgs: 
+            stack(
+                [transforms.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, hue=0.1)(img) for img in imgs]
+            )
+    )
+    # we create a composition of transformations including the lambda functions
+    augs = transforms.Compose([
+        random_resized_crop_lambda,    # Apply random cropping and resizing to original size
+        color_distort_lambda           # Apply color distortion
+    ]) 
+
+    # CREATE THE STRATEGY INSTANCE
+    # Construct the strategy
+    cl_strategy = ss.SimCLR(
+        model, optimizer,
+        augmentations=augs, temperature=temperature,
+        train_mb_size=batch_size, train_epochs=epochs, eval_mb_size=batch_size,
+        evaluator=eval_plugin,
+        device = device,
+        plugins=plugins
+    )
+
+    # TRAINING LOOP
+    pretrain(scenario, cl_strategy, name)
+    train(scenario, cl_strategy, name)  
 
 # TODO: class specific metrics not recording correctly for stratify strategy, either fix or create custom metric
 # TODO: add lr sheduling

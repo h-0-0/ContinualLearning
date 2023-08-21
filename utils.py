@@ -9,6 +9,7 @@ from plot import training_acc_plot
 from avalanche.training.determinism.rng_manager import RNGManager
 from avalanche.training.checkpoint import maybe_load_checkpoint, save_checkpoint
 import os
+import SimCLR_models as simclr
 
 def set_seed(seed):
     """Sets the seed for Python's `random`, NumPy, and PyTorch global generators"""
@@ -17,11 +18,17 @@ def set_seed(seed):
 def get_model(model_name, device, num_classes):
     """ Returns the model with the given name and device."""
     if model_name == "VGG16":
-        model = VGG16(num_classes=num_classes)
+        model = VGG16(num_classes)
     elif model_name == "ResNet18":
-        model = ResNet18(num_classes=num_classes)
+        model = ResNet18(num_classes)
     elif model_name == "ResNet50":
-        model = ResNet50(num_classes=num_classes)
+        model = ResNet50(num_classes)
+    elif model_name ==  "SimCLR_VGG16":
+        model = simclr.VGG16(num_classes)
+    elif model_name ==  "SimCLR_ResNet18":
+        model = simclr.ResNet18(num_classes)
+    elif model_name ==  "SimCLR_ResNet50":
+        model = simclr.ResNet50(num_classes)
     else:
         raise ValueError("Model not supported")
     model.to(device)
@@ -84,7 +91,7 @@ def get_device(device):
         pass
     return device
 
-def train_and_plot(scenario, cl_strategy, eval_plugin, name):
+def train(scenario, cl_strategy, name):
     """ Performs the training loop, supports checkpointing."""
     fname = "checkpoints/"+name+".pkl"  # name of the checkpoint file
     cl_strategy, initial_exp = maybe_load_checkpoint(cl_strategy, fname) # load from checkpoint if exists
@@ -92,7 +99,7 @@ def train_and_plot(scenario, cl_strategy, eval_plugin, name):
     directory = fname[0:[pos for pos, char in enumerate(fname) if char == "/"][-1]]
     if not os.path.exists(directory):
         os.makedirs(directory)
-    print('Starting fixed stratified stream experiment...')
+    print('Starting training...')
     # for experience in scenario.train_stream:
     for experience in scenario.train_stream[initial_exp:]:
         print("Start of experience: ", experience.current_experience)
@@ -109,8 +116,29 @@ def train_and_plot(scenario, cl_strategy, eval_plugin, name):
         # we checkpoint (save the model)
         save_checkpoint(cl_strategy, fname)
     print('Experiment completed')
-    plot_results(eval_plugin, fname="plots/"+name+".png")
-    print("Plotted Results")
+
+def pretrain(scenario, cl_strategy, name):
+    """ Performs the training loop, supports checkpointing."""
+    fname = "checkpoints/"+ "pre_" + name+".pkl"  # name of the checkpoint file
+    cl_strategy, initial_exp = maybe_load_checkpoint(cl_strategy, fname) # load from checkpoint if exists
+    # if checkpoint directory does not exist, create it
+    directory = fname[0:[pos for pos, char in enumerate(fname) if char == "/"][-1]]
+    if not os.path.exists(directory):
+        os.makedirs(directory)
+    print('Starting pre-training...')
+    # for experience in scenario.train_stream:
+    for experience in scenario.train_stream[initial_exp:]:
+        print("Start of experience: ", experience.current_experience)
+        print("Current Classes: ", experience.classes_in_this_experience)
+
+        # we train
+        cl_strategy.train(experience)
+        print('Training completed')
+
+        # we checkpoint (save the model)
+        save_checkpoint(cl_strategy, fname)
+    cl_strategy.done_pretraining()
+    print('Experiment completed')
 
 def plot_results(eval_plugin, fname=None):
     """ Plots the results from the metrics."""

@@ -34,6 +34,20 @@ def main(args):
             batch_ratio = args.batch_ratio, 
             percentage = args.percentage
         )
+    elif args.strategy == "ssl":
+        run.ssl(
+            data_name = args.data_name, 
+            model_name = args.model_name, 
+            batch_size = args.batch_size,
+            learning_rate = args.learning_rate, 
+            epochs = args.epochs,
+            n_tasks = args.n_tasks,
+            device = args.device, 
+            optimizer_type = args.optimizer_type, 
+            seed = args.seed,
+            early_stopping = args.early_stopping,
+            temperature=args.temperature
+        )
     
 
 if __name__ == "__main__":
@@ -70,14 +84,17 @@ if __name__ == "__main__":
     # Argument for setting the seed
     parser.add_argument("--seed", type=int, help="Seed for random number generator, default: 2026", default=2026)
 
+    # Argument for self supervised learning
+    parser.add_argument("--temperature", type=float, help="Temperature for self supervised learning, default: 0.5", default=0.5)
+
     # Parse arguments
     args = parser.parse_args()
 
     # Check arguments are correct
     if not (args.optimizer_type in ["Adam", "SGD", "SGD_momentum"]):
         raise ValueError("Only Adam, SGD and SGD with momentum optimizers are supported at the moment")
-    if not (args.strategy in ["regular", "fixed_replay_stratify"]):
-        raise ValueError("Only regular and fixed replay stratify strategies are supported at the moment")
+    if not (args.strategy in ["regular", "fixed_replay_stratify", "ssl"]):
+        raise ValueError("Only regular, fixed replay stratify and ssl strategies are supported at the moment")
     
     # Run experiment
     main(args)

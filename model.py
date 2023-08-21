@@ -3,7 +3,7 @@ from torchvision.models import resnet18, resnet50
 
 # Class for VGG16 convolutional neural network architecture
 class VGG16(nn.Module):
-    def __init__(self, input_channels = 3, num_classes = 100):
+    def __init__(self, num_classes: int, input_channels = 3):
 
         super(VGG16, self).__init__()
 
@@ -87,7 +87,7 @@ class VGG16(nn.Module):
     
 # Class for ResNet18 from torchvision
 class ResNet18(nn.Module):
-    def __init__(self, input_channels = 3, num_classes = 100):
+    def __init__(self, num_classes: int, input_channels = 3):
         super(ResNet18, self).__init__()
         self.resnet18 = resnet18(weights=None)
         self.resnet18.conv1 = nn.Conv2d(input_channels, 64, kernel_size=7, stride=2, padding=3, bias=False)
@@ -100,7 +100,7 @@ class ResNet18(nn.Module):
     
 # Class for ResNet50 from torchvision
 class ResNet50(nn.Module):
-    def __init__(self, input_channels = 3, num_classes = 100):
+    def __init__(self, num_classes: int, input_channels = 3):
         super(ResNet50, self).__init__()
         self.resnet50 = resnet50(weights=None)
         self.resnet50.conv1 = nn.Conv2d(input_channels, 64, kernel_size=7, stride=2, padding=3, bias=False)
@@ -110,8 +110,6 @@ class ResNet50(nn.Module):
     # Compute forward pass
     def forward(self, x):
         return self.resnet50(x)
-
-# TODO: check that resnet models actually use added layers (conv1 and fc) in forward pass
 
 # Main function that instantiates all models and prints their architectures
 # to facilitate a quick view of avaliable models
