@@ -5,7 +5,7 @@
 #SBATCH --tasks-per-node=1
 #SBATCH --cpus-per-task=1
 #SBATCH --gres=gpu:1
-#SBATCH --job-name=0.5
+#SBATCH --job-name=VGG16_0.8
 #SBATCH --nodes=1
 #SBATCH --time=10:00:00
 #SBATCH --mem=7G
@@ -33,9 +33,9 @@ nvidia-smi --query-gpu=name --format=csv,noheader
 source ../pyvenv/bin/activate
 
 # Regular CL
-# python main.py --epochs=15 --optimizer_type="SGD" --model_name="VGG16"
+# python main.py --epochs=200 --optimizer_type="SGD" --model_name="VGG16" --n_tasks=1
 
 # CL scenario where we stratify the SplitCIFAR10 dataset into two different datasets
-python main.py --epochs=15 --optimizer_type="SGD" --strategy="fixed_replay_stratify" --data2_name="SplitCIFAR10" --batch_ratio=0.5 --percentage=0.5 --model_name="VGG16"
+python main.py --epochs=15 --optimizer_type="SGD" --strategy="fixed_replay_stratify" --data2_name="SplitCIFAR10" --batch_ratio=0.8 --percentage=0.8 --model_name="VGG16"
 
 echo End Time: $(date)

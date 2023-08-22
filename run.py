@@ -22,7 +22,7 @@ def regular(data_name, model_name, batch_size, learning_rate, epochs, n_tasks, d
     device = get_device(device)
 
     # CREATE NAME FOR LOGGING, CHECKPOINTING, ETC
-    name = data_name + "/" + model_name + "/" + optimizer_type +  "/regular/lr_" + str(learning_rate)
+    name = data_name + "_" + str(n_tasks) + "_tasks" + "/" + model_name + "/" + optimizer_type +  "/regular/lr_" + str(learning_rate)
 
     # GET DATA
     scenario = data.get_data(data_name, n_tasks=n_tasks, seed=seed)
@@ -65,7 +65,7 @@ def fixed_replay_stratify(data_name, model_name, batch_size, learning_rate, epoc
         learning_rate = tune_hyperparams(data_name, model_name, optimizer_type, selection_metric="final_train_accuracy")
 
     # CREATE NAME FOR LOGGING, CHECKPOINTING, ETC
-    name = data_name + "/" + model_name + "/" + optimizer_type +  "/fixed_replay_stratify/percent_" + str(percentage) + "_ratio_" + str(batch_ratio) + "_lr_" + str(learning_rate)
+    name = data_name + "_" + str(n_tasks) + "_tasks" + "/" + model_name + "/" + optimizer_type +  "/fixed_replay_stratify/percent_" + str(percentage) + "_ratio_" + str(batch_ratio) + "_lr_" + str(learning_rate)
 
     # HANDLE DEVICE
     device = get_device(device)
