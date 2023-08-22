@@ -7,7 +7,7 @@ import torchvision.transforms as transforms
 
 from custom_plugins import BatchSplitReplay, FixedBuffer
 import data as data
-from param_tune import tune_hyperparams
+from param_tune import tune_hyperparams, ssl_tune_hyperparams
 from utils import set_seed, get_eval_plugin, get_optimizer, get_device, get_model, train, pretrain
 import self_supervised as ss
 
@@ -112,14 +112,17 @@ def fixed_replay_stratify(data_name, model_name, batch_size, learning_rate, epoc
     # TRAINING LOOP
     train(scenario, cl_strategy, name)
 
-def ssl(data_name, model_name, batch_size, learning_rate, temperature, epochs, n_tasks, device, optimizer_type, seed, early_stopping):
+def ssl(data_name, data2_name, model_name, ssl_batch_size, class_batch_size, learning_rate, ssl_epochs, class_epochs, n_tasks, device, optimizer_type, seed, early_stopping, temperature):
     # SET THE SEED 
     set_seed(seed)
 
     # PERFORM/LOAD HYPERPARAMETER TUNING
-    if learning_rate is None:
-        # TODO: change to SSL version, add temperature as hyperparameter, also l2 norm param?
-        learning_rate = tune_hyperparams(data_name, model_name, optimizer_type, selection_metric="final_train_accuracy")
+    if learning_rate is None or temperature is None:
+        tune_learning_rate, tune_temperature = ssl_tune_hyperparams(data_name, model_name, optimizer_type, selection_metric="final_train_accuracy")
+        if learning_rate is None:
+            learning_rate = tune_learning_rate
+        if temperature is None:
+            temperature = tune_temperature
 
     # CREATE NAME FOR LOGGING, CHECKPOINTING, ETC
     name = data_name + "/" + model_name + "/" + optimizer_type +  "/ssl/lr_" + str(learning_rate)
@@ -128,15 +131,15 @@ def ssl(data_name, model_name, batch_size, learning_rate, temperature, epochs, n
     device = get_device(device)
 
     # GET DATA
-    # TODO: needs SSL version?
-    scenario = data.get_data(data_name, n_tasks=n_tasks, seed=seed) 
+    pre_scenario = data.get_data(data_name, n_tasks=n_tasks, seed=seed) 
+    class_scenario = data.get_data(data2_name, seed=seed)
 
     # CREATE MODEL
-    num_classes = len([item for sublist in scenario.original_classes_in_exp for item in sublist]) # so we set the output layer to the correct size
+    num_classes = len([item for sublist in class_scenario.original_classes_in_exp for item in sublist]) # so we set the output layer to the correct size
     model = get_model("SimCLR_" + model_name, device, num_classes)
 
     # DEFINE THE EVALUATION PLUGIN and LOGGERS
-    eval_plugin = get_eval_plugin(name="log/"+ name, track_classes=[j for i in scenario.original_classes_in_exp for j in i]) 
+    eval_plugin = get_eval_plugin(name="log/"+ name, track_classes=[j for i in class_scenario.original_classes_in_exp for j in i]) 
 
     # SETUP OTHER PLUGINS
     # Construct the plugins
@@ -152,11 +155,11 @@ def ssl(data_name, model_name, batch_size, learning_rate, temperature, epochs, n
 
     # DEFINE THE AUGMENTATIONS
     # we define lambda functions for the augmentations
-    _, og_height, og_width = scenario.original_train_dataset[0][0].shape
+    _, og_height, og_width = pre_scenario.original_train_dataset[0][0].shape
     random_resized_crop_lambda = transforms.Lambda(
         lambda imgs: 
             stack(
-                [transforms.RandomResizedCrop(size=(og_height, og_width), scale=(0.2, 0.8))(img) for img in imgs]
+                [transforms.RandomResizedCrop(size=(og_height, og_width), scale=(0.2, 0.8), antialias=True)(img) for img in imgs]
             )
     )
     color_distort_lambda = transforms.Lambda(
@@ -171,27 +174,28 @@ def ssl(data_name, model_name, batch_size, learning_rate, temperature, epochs, n
         color_distort_lambda           # Apply color distortion
     ]) 
 
-    # CREATE THE STRATEGY INSTANCE
-    # Construct the strategy
-    cl_strategy = ss.SimCLR(
+    # PERFORM SSL
+    # construct the strategy
+    ssl_strategy = ss.SimCLR(
         model, optimizer,
         augmentations=augs, temperature=temperature,
-        train_mb_size=batch_size, train_epochs=epochs, eval_mb_size=batch_size,
+        train_mb_size=ssl_batch_size, train_epochs=ssl_epochs, eval_mb_size=class_batch_size,
         evaluator=eval_plugin,
         device = device,
         plugins=plugins
     )
+    # train
+    pretrain(pre_scenario, ssl_strategy, name)
+    ssl_strategy.done_pretraining(class_batch_size, class_epochs)
 
-    # TRAINING LOOP
-    pretrain(scenario, cl_strategy, name)
-    train(scenario, cl_strategy, name)  
+    # TRAIN CLASSIFIER
+    # train
+    train(class_scenario, ssl_strategy, name)  
 
-# TODO: class specific metrics not recording correctly for stratify strategy, either fix or create custom metric
+# TODO: metric logging for ssl most likely needs to be changed
+# TODO: logging, checkpointing structure for ssl also most likely needs to be changed
+# TODO: check ssl tuning is working correctly, check tensor logs etc.
+
 # TODO: add lr sheduling
-# TODO: sort out plotting or remove it
 # TODO: set the scipy RNG in set_seed so can remove the need for passing seed to get_data
 # TODO: if you run experiment from checkpoint does logging continue from where it left off?
-# TODO: get it working on MNIST and CIFAR100
-
-# CHECK: max_size
-# CHECK: runs on correct device

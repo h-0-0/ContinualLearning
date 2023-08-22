@@ -169,7 +169,8 @@ class SimCLR(SupervisedTemplate):
         mb_x_augmented = self.augmentations(self.mbatch[0])
         self.mbatch[0] = mb_x_augmented
     
-    def done_pretraining():
+    def done_pretraining(self, new_batch_size = None, new_epochs = None):
         self.is_pretraining = False
         self.model.pretraining = False
-        self.is_training = True
+        self.train_mb_size = new_batch_size if new_batch_size is not None else self.train_mb_size
+        self.train_epochs = new_epochs if new_epochs is not None else self.train_epochs

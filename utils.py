@@ -137,7 +137,6 @@ def pretrain(scenario, cl_strategy, name):
 
         # we checkpoint (save the model)
         save_checkpoint(cl_strategy, fname)
-    cl_strategy.done_pretraining()
     print('Experiment completed')
 
 def plot_results(eval_plugin, fname=None):

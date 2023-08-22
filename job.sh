@@ -38,4 +38,7 @@ source ../pyvenv/bin/activate
 # CL scenario where we stratify the SplitCIFAR10 dataset into two different datasets
 python main.py --epochs=15 --optimizer_type="SGD" --strategy="fixed_replay_stratify" --data2_name="SplitCIFAR10" --batch_ratio=0.5 --percentage=0.5 --model_name="VGG16"
 
+# SSL in batch scenario
+python main.py --epochs=100 --optimizer_type="SGD" --strategy="ssl" --data_name="SplitImageNet" --data2_name="CIFAR10" --temperature=0.5 --model_name="VGG16" --learning_rate=0.01
+
 echo End Time: $(date)
