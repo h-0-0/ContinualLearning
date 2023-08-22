@@ -1,6 +1,6 @@
 from torchvision.datasets import MNIST, CIFAR10, CIFAR100
 from sklearn.model_selection import train_test_split
-from avalanche.benchmarks.classic import SplitCIFAR10
+from avalanche.benchmarks.classic import SplitCIFAR10, SplitCIFAR100, SplitImageNet, SplitTinyImageNet, SplitMNIST
 from avalanche.benchmarks.generators import nc_benchmark
 from avalanche.benchmarks.utils import make_classification_dataset
 from torchvision.transforms import ToTensor
@@ -21,7 +21,6 @@ def stratify_split(dataset, percentage, seed=None):
     data1_split = Subset(dataset, data1_indices)
     data2_split = Subset(dataset, data2_indices)
     return data1_split, data2_split
-# TODO: check this is splitting correctly
 
 @dispatch(str)
 def get_data(name, n_tasks=5, seed=None):
@@ -31,58 +30,34 @@ def get_data(name, n_tasks=5, seed=None):
     Returns tuple consisting of testing and training data (in that order), unless is CL benchmark in which case returns just the scenario
     """
     if(name == "MNIST"):
-        training_data = MNIST(
-            "data", 
-            download=True, 
-            train=True,
-            transform=ToTensor()
-        ),
-
-        test_data = MNIST(
-            "data", 
-            download=True, 
-            train=False,
-            transform=ToTensor()
-        )
-        data = (training_data[0], test_data)
+        data = SplitMNIST(n_experiences=1, shuffle=False, return_task_id=False)
+        return 
+    elif(name == "CIFAR10"):
+        data = SplitCIFAR10(n_experiences=1, shuffle=False, return_task_id=False)
         return data
     elif(name == "CIFAR100"):
-        training_data = CIFAR100(
-            "data", 
-            download=True, 
-            train=True,
-            transform=ToTensor()
-        ),
-
-        test_data = CIFAR100(
-            "data", 
-            download=True, 
-            train=False,
-            transform=ToTensor()
-        )
-        data = (training_data[0], test_data)
+        data = SplitCIFAR100(n_experiences=1, shuffle=False, return_task_id=False)
         return data
-    elif(name == "CIFAR10"):
-        training_data = CIFAR10(
-            "data", 
-            download=True, 
-            train=True,
-            transform=ToTensor()
-        ),
-
-        test_data = CIFAR10(
-            "data", 
-            download=True, 
-            train=False,
-            transform=ToTensor()
-        )
-        data = (training_data[0], test_data)
+    elif(name == "ImageNet"):
+        data = SplitImageNet(n_experiences=1, shuffle=False, return_task_id=False)
+        return data
+    elif(name == "TinyImageNet"):
+        data = SplitTinyImageNet(n_experiences=1, shuffle=False, return_task_id=False)
         return data
     elif(name == "SplitCIFAR10"):
         data = SplitCIFAR10(n_experiences=n_tasks, shuffle=False, return_task_id=False)
         return data
+    elif(name == "SplitCIFAR100"):
+        data = SplitCIFAR100(n_experiences=n_tasks, shuffle=False, return_task_id=False)
+        return data
+    elif(name == "SplitImageNet"):
+        data = SplitImageNet(n_experiences=n_tasks, shuffle=False, return_task_id=False)
+        return data
+    elif(name == "SplitTinyImageNet"):
+        data = SplitTinyImageNet(n_experiences=n_tasks, shuffle=False, return_task_id=False)
+        return data
     else:
-        raise Exception("Not given valid dataset name must be: MNIST, CIFAR10, SplitCIFAR10 or CIFAR100")
+        raise Exception("Not given valid dataset name must be: MNIST, CIFAR10, SplitCIFAR10, CIFAR100, SplitCIFAR100, SplitImageNet or SplitTinyImageNet")
    
 @dispatch(str, str)
 def get_data(name, name2, n_tasks=5, strategy={"name":"stratify", "percentage":0.5}, seed=None):
@@ -96,11 +71,11 @@ def get_data(name, name2, n_tasks=5, strategy={"name":"stratify", "percentage":0
             - percentage : float between 0 and 1
     """
     if(name == "SplitCIFAR10"):
-        data = get_data("CIFAR10", n_tasks=n_tasks)
+        data = get_data("CIFAR10")
         if(name2 == "SplitCIFAR10"):
-            test_data = data[1]
+            test_data = data.original_test_dataset
             if(strategy["name"] == "stratify"):
-                data1, data2 = stratify_split(data[0], strategy["percentage"], seed=seed)
+                data1, data2 = stratify_split(data.original_train_dataset, strategy["percentage"], seed=seed)
                 scenario = nc_benchmark(
                     data1,
                     test_data, 
@@ -110,7 +85,6 @@ def get_data(name, name2, n_tasks=5, strategy={"name":"stratify", "percentage":0
                     task_labels=False
                     )
                 data2 = make_classification_dataset(data2, task_labels=-1)
-                #TODO: declare task labels?
                 return (scenario, data2)
             else:
                 raise Exception("Not given valid dataset split method currently only support: stratify")
@@ -118,6 +92,3 @@ def get_data(name, name2, n_tasks=5, strategy={"name":"stratify", "percentage":0
             raise Exception("Not given valid dataset-2 name, currently only support partitioning SplitCIFAR10") 
     else:
         raise Exception("Not given valid dataset-1 name, currently only support: SplitCIFAR10")
-
-# TODO: does forwards metric now work?  
-# TODO: make it so all datasets are avalanche datasets
