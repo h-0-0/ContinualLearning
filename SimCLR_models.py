@@ -8,7 +8,9 @@ class SimCLRModel(Module):
     Uses a feature extractor and projection network during training.
     The input is passed through a feature extractor and then normalized
     before being fed to the projection network or classifier.
-    During evaluation we freeze the feature extractor and only train the classifier.
+    In ssl training mode (is_train_ssl = True), the model returns the output of the projection network.
+    In classifier training mode (is_train_classifier = True), the model returns the output of the classifier.
+    We initialize the model so that it is in the training SSL mode (ie. ready to be trained in a self supervised manner).
     """
 
     def __init__(self, feature_extractor: Module, projection: Module, classifier: Module):
@@ -24,20 +26,29 @@ class SimCLRModel(Module):
         self.feature_extractor = feature_extractor
         self.projector = projection
         self.classifier = classifier
-        self.pretraining = True
+        self.is_train_ssl = True
+        self.is_train_classifier = False
 
     def forward(self, x):
         x = self.feature_extractor(x)
         x = nn.functional.normalize(x, p=2, dim=1)
-        if self.pretraining:
+        if self.is_train_ssl:
             self.feature_extractor.requires_grad_(True)
             return self.projector(x)
-        elif self.training:
+        elif self.is_train_classifier:
             self.feature_extractor.requires_grad_(False)
             return self.classifier(x)
         else:
-            return self.classifier(x)
-        
+            raise ValueError("Model must be in is_train_ssl or is_train_classifier mode.")
+    
+    def set_train_ssl(self):
+        self.is_train_ssl = True
+        self.is_train_classifier = False
+
+    def set_train_classifier(self):
+        self.is_train_ssl = False
+        self.is_train_classifier = True
+
 class VGG16(SimCLRModel):
     """
     VGG16 Model.

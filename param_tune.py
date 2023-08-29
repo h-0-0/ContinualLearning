@@ -1,6 +1,6 @@
 from ray import tune, init, shutdown, air
 from ray.air import session
-from utils import get_device, get_model, get_optimizer, get_eval_plugin, ssl_get_eval_plugin
+from utils import get_device, get_model, get_optimizer, get_eval_plugin, ssl_get_eval_plugin, get_augmentations, done_train_ssl
 import data
 from avalanche.training.supervised.strategy_wrappers import Naive
 from torch.nn import CrossEntropyLoss
@@ -24,6 +24,8 @@ def run_config(config):
 
     learning_rate = config["learning_rate"]
 
+    name= data_name + "/" + model_name + "/" + optimizer_type + "/lr_" + str(learning_rate)
+
     # HANDLE DEVICE
     device = get_device()
 
@@ -38,7 +40,7 @@ def run_config(config):
     optimizer = get_optimizer(optimizer_type, model, learning_rate)
 
     # DEFINE THE EVALUATION PLUGIN and LOGGERS#
-    eval_plugin = get_eval_plugin(name="tune_log/"+ data_name + "/" + model_name + "/" + optimizer_type + "/lr_" + str(learning_rate) ) 
+    eval_plugin = get_eval_plugin(name) 
 
     # CREATE THE STRATEGY INSTANCE (NAIVE)
     cl_strategy = Naive(
@@ -46,7 +48,7 @@ def run_config(config):
         criterion = CrossEntropyLoss(), train_epochs=200,
         train_mb_size = 256, eval_mb_size = 256,
         device = device,
-        evaluator = eval_plugin
+        evaluator = eval_plugin,
         plugins = [LRSchedulerPlugin(lr_scheduler.CosineAnnealingLR(optimizer, T_max=200))] 
     )
 
@@ -77,11 +79,13 @@ def ssl_run_config(config):
     learning_rate = config["learning_rate"]
     temperature = config["temperature"]
 
+    name = "tune_log/"+ data_name + "/" + model_name + "/" + optimizer_type + "/lr_" + str(learning_rate) + "_temp_" + str(temperature) + "_pre"
+
     # HANDLE DEVICE
     device = get_device()
 
     # GET DATA
-    scenario = data.get_data(data_name, n_tasks=1)
+    ssl_scenario = data.get_data(data_name, n_tasks=1)
     class_scenario = data.get_data("CIFAR10", n_tasks=1)
 
     # CREATE MODEL
@@ -92,35 +96,17 @@ def ssl_run_config(config):
     optimizer = get_optimizer(optimizer_type, model, learning_rate)
 
     # DEFINE THE EVALUATION PLUGIN and LOGGERS
-    eval_plugin = ssl_get_eval_plugin(name="tune_log/"+ data_name + "/" + model_name + "/" + optimizer_type + "/lr_" + str(learning_rate) + "_temp_" + str(temperature) + "_pre" ) 
+    eval_plugin = ssl_get_eval_plugin(name) 
 
     # DEFINE THE AUGMENTATIONS
-    # we define lambda functions for the augmentations
-    _, og_height, og_width = scenario.original_train_dataset[0][0].shape
-    random_resized_crop_lambda = transforms.Lambda(
-        lambda imgs: 
-            stack(
-                [transforms.RandomResizedCrop(size=(og_height, og_width), scale=(0.2, 0.8), antialias=True)(img) for img in imgs]
-            )
-    )
-    color_distort_lambda = transforms.Lambda(
-        lambda imgs: 
-            stack(
-                [transforms.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, hue=0.1)(img) for img in imgs]
-            )
-    )
-    # we create a composition of transformations including the lambda functions
-    augs = transforms.Compose([
-        random_resized_crop_lambda,    # Apply random cropping and resizing to original size
-        color_distort_lambda           # Apply color distortion
-    ]) 
+    augs = get_augmentations(ssl_scenario)
 
     # CREATE THE STRATEGY INSTANCE (NAIVE)
-    cl_strategy = ss.SimCLR(
+    ssl_strategy = ss.SimCLR(
         model, optimizer,
         augmentations=augs, temperature=temperature,
         train_epochs=100,
-        train_mb_size = 512, eval_mb_size = 256,
+        train_mb_size = 512, eval_mb_size = 512,
         device = device,
         evaluator = eval_plugin,
         plugins = [LRSchedulerPlugin(lr_scheduler.CosineAnnealingLR(optimizer, T_max=100))]
@@ -128,27 +114,28 @@ def ssl_run_config(config):
 
     # TRAINING LOOP
     # Perform ssl
-    for experience in scenario.train_stream:
+    for experience in ssl_scenario.train_stream:
         # we train the model on the current experience
-        cl_strategy.train(experience)
+        ssl_strategy.train(experience)
+    done_train_ssl(model, optimizer)
 
     # Perform classification to test ssl
     name = name[:-4] + "_classification"
-    eval_plugin = get_eval_plugin(name="log/"+ name, track_classes=[j for i in class_scenario.original_classes_in_exp for j in i])
-    eval_strategy = ss.SimCLR(
+    eval_plugin = get_eval_plugin(name, track_classes=[j for i in class_scenario.original_classes_in_exp for j in i])
+    class_strategy = Naive(
         model, optimizer,
-        augmentations=augs, temperature=temperature,
-        train_mb_size=256, train_epochs=200, eval_mb_size=256,
-        evaluator=eval_plugin,
+        criterion = CrossEntropyLoss(), train_epochs = 200,
+        train_mb_size = 256, eval_mb_size = 256,
+        evaluator = eval_plugin,
         device = device
     )
-    eval_strategy.done_pretraining()
     for experience in class_scenario.train_stream:
         # we train the model on the current experience
-        cl_strategy.train(experience)
+        class_strategy.train(experience)
 
         # we test the model on the full test stream
-        cl_strategy.eval(class_scenario.test_stream)
+        class_strategy.eval(class_scenario.test_stream)
+
     all_metrics = eval_plugin.get_all_metrics()
     session.report(
         {
