@@ -133,11 +133,7 @@ class SimCLR(SupervisedTemplate):
         self.augmentations = augmentations
         self.temperature = temperature
 
-        self.pre_train_loss = NTXentLoss(temperature=self.temperature)
-        self.train_loss = torch.nn.CrossEntropyLoss()
-        self.eval_loss = torch.nn.CrossEntropyLoss()
-
-        self.is_pretraining = True
+        self.loss_fun = NTXentLoss(temperature=self.temperature)
 
         super().__init__(
             model,
@@ -154,43 +150,22 @@ class SimCLR(SupervisedTemplate):
         )
 
     def criterion(self):
-        if self.is_pretraining:
-            return self.pre_train_loss(self.mb_output)
-        elif self.is_training:
-            return self.train_loss(self.mb_output, self.mb_y)
-        else:
-            return self.eval_loss(self.mb_output, self.mb_y)
+        return self.loss_fun(self.mb_output)
 
     def _before_forward(self, **kwargs):
         """
         Augment images for current mini-batch.
         """
-        if self.is_pretraining:
-            super()._before_forward(**kwargs)
-            mb_x_augmented_1 = self.augmentations(self.mbatch[0])
-            mb_x_augmented_2 = self.augmentations(self.mbatch[0])
-            # We interleave augmented images
-            mb_x_augmented = torch.cat([mb_x_augmented_1, mb_x_augmented_2], dim=0)
-            n = mb_x_augmented_1.shape[0]
-            indices = [[i, n+i] for i in range(n)]
-            indices = [item for sublist in indices for item in sublist]
-            mb_x_augmented_sorted = torch.zeros_like(mb_x_augmented)
-            for i, ind in enumerate(indices):
-                mb_x_augmented_sorted[i] = mb_x_augmented[ind]
-            self.mbatch[0] = mb_x_augmented
-            # TODO: make this more efficient
-        else:
-            super()._before_forward(**kwargs)
-    
-    def done_pretraining(self):
-        """
-        Once ssl is done we set is_pretraining to false so we now train using the classifer head (and freeze the encoder),
-        and we set the train_epochs and train_mb_size to the values we want to use for training the classifier head.
-        We also remove the LRSchedulerPlugin that was used for ssl and reset the optimizer if its effective lr changes.
-        """
-        self.is_pretraining = False
-        self.model.pretraining = False
-        if (type (self.optimizer).__name__ == 'SGD') and (self.optimizer.defaults['momentum'] != 0):
-            self.optimizer = torch.optim.SGD(self.model.parameters(), lr=self.optimizer.lr, momentum=0.9)
-        if (type (self.optimizer).__name__ == 'Adam'):
-            self.optimizer = torch.optim.Adam(self.model.parameters(), lr=self.optimizer.lr)
+        super()._before_forward(**kwargs)
+        mb_x_augmented_1 = self.augmentations(self.mbatch[0])
+        mb_x_augmented_2 = self.augmentations(self.mbatch[0])
+        # We interleave augmented images
+        mb_x_augmented = torch.cat([mb_x_augmented_1, mb_x_augmented_2], dim=0)
+        n = mb_x_augmented_1.shape[0]
+        indices = [[i, n+i] for i in range(n)]
+        indices = [item for sublist in indices for item in sublist]
+        mb_x_augmented_sorted = torch.zeros_like(mb_x_augmented)
+        for i, ind in enumerate(indices):
+            mb_x_augmented_sorted[i] = mb_x_augmented[ind]
+        self.mbatch[0] = mb_x_augmented
+        # TODO: make this more efficient

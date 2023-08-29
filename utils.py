@@ -1,10 +1,10 @@
 from avalanche.logging import InteractiveLogger, TextLogger, TensorboardLogger, CSVLogger
 from model import VGG16, ResNet18, ResNet50
 from avalanche.training.plugins import EvaluationPlugin
-from avalanche.evaluation.metrics import forgetting_metrics, accuracy_metrics, \
-    loss_metrics, timing_metrics, cpu_usage_metrics, disk_usage_metrics, forward_transfer_metrics, bwt_metrics, class_accuracy_metrics
+from avalanche.evaluation.metrics import accuracy_metrics, \
+    loss_metrics, timing_metrics, cpu_usage_metrics, disk_usage_metrics, bwt_metrics, class_accuracy_metrics
 from torch.optim import SGD, Adam
-from torch import cuda
+from torch import cuda, flatten, stack
 from torch import device as torch_device
 from plot import training_acc_plot
 from avalanche.training.determinism.rng_manager import RNGManager
@@ -12,6 +12,8 @@ from avalanche.training.checkpoint import maybe_load_checkpoint, save_checkpoint
 import os
 import SimCLR_models as simclr
 from custom_plugins import EpochCheckpointing
+import torchvision.transforms as transforms
+import torch
 
 def set_seed(seed):
     """Sets the seed for Python's `random`, NumPy, and PyTorch global generators"""
@@ -36,8 +38,9 @@ def get_model(model_name, device, num_classes):
     model.to(device)
     return model
 
-def get_eval_plugin(name="log", log_tensorboard=True, log_stdout=True, log_csv=False, log_text=False, track_classes=None):
+def get_eval_plugin(name, log_tensorboard=True, log_stdout=True, log_csv=False, log_text=False, track_classes=None):
     """ Returns an evaluation plugin with the desired loggers."""
+    name = "log/" + name
     loggers = []
     if log_tensorboard:
         tb_logger = TensorboardLogger(tb_log_dir=name)
@@ -68,8 +71,9 @@ def get_eval_plugin(name="log", log_tensorboard=True, log_stdout=True, log_csv=F
     )
     return eval_plugin 
 
-def ssl_get_eval_plugin(name="log", log_tensorboard=True, log_stdout=True, log_csv=False, log_text=False):
+def ssl_get_eval_plugin(name, log_tensorboard=True, log_stdout=True, log_csv=False, log_text=False):
     """ Returns an evaluation plugin with the desired loggers."""
+    name = "log/" + name
     loggers = []
     if log_tensorboard:
         tb_logger = TensorboardLogger(tb_log_dir=name)
@@ -152,31 +156,6 @@ def train(scenario, cl_strategy, name, device):
         save_checkpoint(cl_strategy, fname)
     print('Experiment completed')
 
-def pretrain(scenario, cl_strategy, name, device):
-    """ Performs the training loop, supports checkpointing."""
-    fname = "checkpoints/"+ name+".pkl"  # name of the checkpoint file
-    cl_strategy, initial_exp = maybe_load_checkpoint(cl_strategy, fname, map_location=device) # load from checkpoint if exists
-    cl_strategy.device = device
-    # if checkpoint directory does not exist, create it
-    directory = fname[0:[pos for pos, char in enumerate(fname) if char == "/"][-1]]
-    if not os.path.exists(directory):
-        os.makedirs(directory)
-    # we add epoch checkpointing plugin to the strategy
-    cl_strategy.plugins.append(EpochCheckpointing(cl_strategy, fname)) #TODO: could I do this in the constructor?
-    print('Starting pre-training...')
-    # for experience in scenario.train_stream:
-    for experience in scenario.train_stream[initial_exp:]:
-        print("Start of experience: ", experience.current_experience)
-        print("Current Classes: ", experience.classes_in_this_experience)
-
-        # we train
-        cl_strategy.train(experience)
-        print('Training completed')
-
-        # we checkpoint (save the model)
-        save_checkpoint(cl_strategy, fname)
-    print('Experiment completed')
-
 def plot_results(eval_plugin, fname=None):
     """ Plots the results from the metrics."""
     all_metrics = eval_plugin.get_all_metrics()
@@ -189,3 +168,39 @@ def plot_results(eval_plugin, fname=None):
         fig.savefig(fname)
     else:
         fig.savefig("plots/"+"training_acc_plot.png")
+
+def get_augmentations(scenario):
+    """
+    Returns composition of augmentations for self-supervised learning.
+    """
+    # we define lambda functions for the augmentations
+    _, og_height, og_width = scenario.original_train_dataset[0][0].shape
+    random_resized_crop_lambda = transforms.Lambda(
+        lambda imgs: 
+            stack(
+                [transforms.RandomResizedCrop(size=(og_height, og_width), scale=(0.2, 0.8), antialias=True)(img) for img in imgs]
+            )
+    )
+    color_distort_lambda = transforms.Lambda(
+        lambda imgs: 
+            stack(
+                [transforms.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, hue=0.1)(img) for img in imgs]
+            )
+    )
+    # we create a composition of transformations including the lambda functions
+    augmentations = transforms.Compose([
+        random_resized_crop_lambda,    # Apply random cropping and resizing to original size
+        color_distort_lambda           # Apply color distortion
+    ]) 
+    return augmentations
+
+def done_train_ssl(model, optimizer):
+    """
+    Once ssl is done we need to let the model know that it is now in classifier training mode, ie. we want to use classifier instead of training head and to freeze the encoder.
+    We also reset the optimizer. 
+    """
+    model.set_train_classifier()
+    if (type (optimizer).__name__ == 'SGD') and (optimizer.defaults['momentum'] != 0):
+        optimizer = torch.optim.SGD(model.parameters(), lr=optimizer.lr, momentum=0.9)
+    if (type (optimizer).__name__ == 'Adam'):
+        optimizer = torch.optim.Adam(model.parameters(), lr=optimizer.lr)

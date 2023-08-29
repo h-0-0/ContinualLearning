@@ -10,7 +10,7 @@ from avalanche.training.plugins.lr_scheduling import LRSchedulerPlugin
 from custom_plugins import BatchSplitReplay, FixedBuffer
 import data as data
 from param_tune import tune_hyperparams, ssl_tune_hyperparams
-from utils import set_seed, get_eval_plugin, ssl_get_eval_plugin, get_optimizer, get_device, get_model, train, pretrain
+from utils import set_seed, get_eval_plugin, ssl_get_eval_plugin, get_optimizer, get_device, get_model, train, get_augmentations, done_train_ssl
 import self_supervised as ss
 
 def regular(data_name, model_name, batch_size, learning_rate, epochs, n_tasks, device, optimizer_type, seed, early_stopping):
@@ -36,7 +36,7 @@ def regular(data_name, model_name, batch_size, learning_rate, epochs, n_tasks, d
     model = get_model(model_name, device, num_classes)
 
     # DEFINE THE EVALUATION PLUGIN and LOGGERS
-    eval_plugin = get_eval_plugin(name="log/"+ name, track_classes=[j for i in scenario.original_classes_in_exp for j in i])
+    eval_plugin = get_eval_plugin(name, track_classes=[j for i in scenario.original_classes_in_exp for j in i])
 
     # SETUP OTHER PLUGINS
     if early_stopping > 0:
@@ -88,7 +88,7 @@ def fixed_replay_stratify(data_name, model_name, batch_size, learning_rate, epoc
     model = get_model(model_name, device, num_classes)
 
     # DEFINE THE EVALUATION PLUGIN and LOGGERS
-    eval_plugin = get_eval_plugin(name="log/"+ name, track_classes=[j for i in scenario.original_classes_in_exp for j in i]) 
+    eval_plugin = get_eval_plugin(name, track_classes=[j for i in scenario.original_classes_in_exp for j in i]) 
 
     # SETUP OTHER PLUGINS
     # Construct batch sizes for benchmark and replay
@@ -136,22 +136,19 @@ def ssl(data_name, data2_name, model_name, ssl_batch_size, class_batch_size, lea
             temperature = tune_temperature
 
     # CREATE NAME FOR LOGGING, CHECKPOINTING, ETC
-    name = data_name + "_" + str(n_tasks) + "_tasks" + "/" + model_name + "/" + optimizer_type +  "/ssl/lr_" + str(learning_rate) + "_temp_" + str(temperature) + "_pre"
+    name = data_name + "_" + str(n_tasks) + "_tasks" + "/" + model_name + "/" + optimizer_type +  "/ssl/lr_" + str(learning_rate) + "_temp_" + str(temperature) + "_ssl"
     print("Experiment name: " ,name)
 
     # HANDLE DEVICE
     device = get_device(device)
 
     # GET DATA
-    pre_scenario = data.get_data(data_name, n_tasks=n_tasks, seed=seed) 
+    ssl_scenario = data.get_data(data_name, n_tasks=n_tasks, seed=seed) 
     class_scenario = data.get_data(data2_name, seed=seed)
 
     # CREATE MODEL
     num_classes = len([item for sublist in class_scenario.original_classes_in_exp for item in sublist]) # so we set the output layer to the correct size
     model = get_model("SimCLR_" + model_name, device, num_classes)
-
-    # DEFINE THE EVALUATION PLUGIN and LOGGERS
-    eval_plugin = ssl_get_eval_plugin(name="log/"+ name) 
 
     # CREATE OPTIMIZER
     optimizer = get_optimizer(optimizer_type, model, learning_rate)
@@ -167,55 +164,40 @@ def ssl(data_name, data2_name, model_name, ssl_batch_size, class_batch_size, lea
         plugins = [LRSchedulerPlugin(lr_scheduler.CosineAnnealingLR(optimizer, T_max=ssl_epochs))]
 
     # DEFINE THE AUGMENTATIONS
-    # we define lambda functions for the augmentations
-    _, og_height, og_width = pre_scenario.original_train_dataset[0][0].shape
-    random_resized_crop_lambda = transforms.Lambda(
-        lambda imgs: 
-            stack(
-                [transforms.RandomResizedCrop(size=(og_height, og_width), scale=(0.2, 0.8), antialias=True)(img) for img in imgs]
-            )
-    )
-    color_distort_lambda = transforms.Lambda(
-        lambda imgs: 
-            stack(
-                [transforms.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, hue=0.1)(img) for img in imgs]
-            )
-    )
-    # we create a composition of transformations including the lambda functions
-    augs = transforms.Compose([
-        random_resized_crop_lambda,    # Apply random cropping and resizing to original size
-        color_distort_lambda           # Apply color distortion
-    ]) 
+    augs = get_augmentations(ssl_scenario)
+
+    # DEFINE THE EVALUATION PLUGIN and LOGGERS
+    eval_plugin = ssl_get_eval_plugin(name) 
 
     # PERFORM SSL
     # construct the strategy
     ssl_strategy = ss.SimCLR(
         model, optimizer,
-        augmentations=augs, temperature=temperature,
-        train_mb_size=ssl_batch_size, train_epochs=ssl_epochs, eval_mb_size=class_batch_size,
-        evaluator=eval_plugin,
+        augmentations = augs, temperature = temperature,
+        train_mb_size = ssl_batch_size, train_epochs = ssl_epochs, eval_mb_size = ssl_batch_size,
+        evaluator = eval_plugin,
         device = device,
-        plugins=plugins
+        plugins = plugins
     )
     # train
-    pretrain(pre_scenario, ssl_strategy, name, device)
+    train(ssl_scenario, ssl_strategy, name, device)
+    done_train_ssl(model, optimizer) # absorb this into training strategy, is there after all experiences callback?
 
     # TRAIN CLASSIFIER
     name = name[:-4] + "_classification"
-    eval_plugin = get_eval_plugin(name="log/"+ name, track_classes=[j for i in class_scenario.original_classes_in_exp for j in i])
-    eval_strategy = ss.SimCLR(
+    eval_plugin = get_eval_plugin(name, track_classes=[j for i in class_scenario.original_classes_in_exp for j in i])
+    class_strategy = Naive(
         model, optimizer,
-        augmentations=augs, temperature=temperature,
-        train_mb_size=class_batch_size, train_epochs=class_epochs, eval_mb_size=class_batch_size,
-        evaluator=eval_plugin,
-        device = device
+        criterion = CrossEntropyLoss(), train_epochs = class_epochs,
+        train_mb_size = class_batch_size, eval_mb_size = class_batch_size,
+        evaluator = eval_plugin,
+        device = device,
+        plugins = plugins
     )
-    eval_strategy.done_pretraining()
     # train
-    train(class_scenario, eval_strategy, name, device)  
+    train(class_scenario, class_strategy, name, device)  
 
 # TODO: check ssl tuning is working correctly, check tensor logs etc.
-# TODO: tidy the ssl, split into two different training routines and make it so SimCLR only does the ssl, not the classification (that should be done in a separate training routine)
 # TODO: Buffer for ssl
 
 # TODO: set the scipy RNG in set_seed so can remove the need for passing seed to get_data
