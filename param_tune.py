@@ -1,6 +1,6 @@
 from ray import tune, init, shutdown, air
 from ray.air import session
-from utils import get_device, get_model, get_optimizer, get_eval_plugin
+from utils import get_device, get_model, get_optimizer, get_eval_plugin, ssl_get_eval_plugin
 import data
 from avalanche.training.supervised.strategy_wrappers import Naive
 from torch.nn import CrossEntropyLoss
@@ -8,6 +8,10 @@ import pandas as pd
 from avalanche.training.plugins.early_stopping import EarlyStoppingPlugin
 import os
 import self_supervised as ss
+from torch.optim import lr_scheduler
+from avalanche.training.plugins.lr_scheduling import LRSchedulerPlugin
+from torch import stack
+from torchvision import transforms
 
 def run_config(config):
     """
@@ -21,7 +25,7 @@ def run_config(config):
     learning_rate = config["learning_rate"]
 
     # HANDLE DEVICE
-    device = get_device(False)
+    device = get_device()
 
     # GET DATA
     scenario = data.get_data(data_name, n_tasks=1)
@@ -42,8 +46,8 @@ def run_config(config):
         criterion = CrossEntropyLoss(), train_epochs=200,
         train_mb_size = 256, eval_mb_size = 256,
         device = device,
-        evaluator = eval_plugin,
-        plugins = [EarlyStoppingPlugin(3, "train_stream")]
+        evaluator = eval_plugin
+        plugins = [LRSchedulerPlugin(lr_scheduler.CosineAnnealingLR(optimizer, T_max=200))] 
     )
 
     # TRAINING LOOP
@@ -74,7 +78,7 @@ def ssl_run_config(config):
     temperature = config["temperature"]
 
     # HANDLE DEVICE
-    device = get_device(False)
+    device = get_device()
 
     # GET DATA
     scenario = data.get_data(data_name, n_tasks=1)
@@ -87,17 +91,39 @@ def ssl_run_config(config):
     # CREATE OPTIMIZER
     optimizer = get_optimizer(optimizer_type, model, learning_rate)
 
-    # DEFINE THE EVALUATION PLUGIN and LOGGERS#
-    eval_plugin = get_eval_plugin(name="tune_log/"+ data_name + "/" + model_name + "/" + optimizer_type + "/lr_" + str(learning_rate) ) 
+    # DEFINE THE EVALUATION PLUGIN and LOGGERS
+    eval_plugin = ssl_get_eval_plugin(name="tune_log/"+ data_name + "/" + model_name + "/" + optimizer_type + "/lr_" + str(learning_rate) + "_temp_" + str(temperature) + "_pre" ) 
+
+    # DEFINE THE AUGMENTATIONS
+    # we define lambda functions for the augmentations
+    _, og_height, og_width = scenario.original_train_dataset[0][0].shape
+    random_resized_crop_lambda = transforms.Lambda(
+        lambda imgs: 
+            stack(
+                [transforms.RandomResizedCrop(size=(og_height, og_width), scale=(0.2, 0.8), antialias=True)(img) for img in imgs]
+            )
+    )
+    color_distort_lambda = transforms.Lambda(
+        lambda imgs: 
+            stack(
+                [transforms.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, hue=0.1)(img) for img in imgs]
+            )
+    )
+    # we create a composition of transformations including the lambda functions
+    augs = transforms.Compose([
+        random_resized_crop_lambda,    # Apply random cropping and resizing to original size
+        color_distort_lambda           # Apply color distortion
+    ]) 
 
     # CREATE THE STRATEGY INSTANCE (NAIVE)
     cl_strategy = ss.SimCLR(
         model, optimizer,
-        criterion = CrossEntropyLoss(), train_epochs=100,
-        train_mb_size = 4096, eval_mb_size = 256,
+        augmentations=augs, temperature=temperature,
+        train_epochs=100,
+        train_mb_size = 512, eval_mb_size = 256,
         device = device,
         evaluator = eval_plugin,
-        plugins = [EarlyStoppingPlugin(3, "train_stream")]
+        plugins = [LRSchedulerPlugin(lr_scheduler.CosineAnnealingLR(optimizer, T_max=100))]
     )
 
     # TRAINING LOOP
@@ -105,14 +131,24 @@ def ssl_run_config(config):
     for experience in scenario.train_stream:
         # we train the model on the current experience
         cl_strategy.train(experience)
-    cl_strategy.done_pretraining(256, 100)
+
     # Perform classification to test ssl
+    name = name[:-4] + "_classification"
+    eval_plugin = get_eval_plugin(name="log/"+ name, track_classes=[j for i in class_scenario.original_classes_in_exp for j in i])
+    eval_strategy = ss.SimCLR(
+        model, optimizer,
+        augmentations=augs, temperature=temperature,
+        train_mb_size=256, train_epochs=200, eval_mb_size=256,
+        evaluator=eval_plugin,
+        device = device
+    )
+    eval_strategy.done_pretraining()
     for experience in class_scenario.train_stream:
         # we train the model on the current experience
         cl_strategy.train(experience)
 
         # we test the model on the full test stream
-        cl_strategy.eval(scenario.test_stream)
+        cl_strategy.eval(class_scenario.test_stream)
     all_metrics = eval_plugin.get_all_metrics()
     session.report(
         {
@@ -182,16 +218,13 @@ def tune_hyperparams(data_name, model_name, optimizer_type, selection_metric="fi
             checkpoint_config=air.CheckpointConfig(
                 checkpoint_score_attribute="final_train_accuracy",
                 checkpoint_score_order="max",
-                num_to_keep=2,
+                num_to_keep=1,
             ),
             storage_path=storage_path,
         )
     )
     result_grid = tuner.fit()
     shutdown()
-    # best_result = result_grid.get_best_result(metric=selection_metric, mode="max")
-    # best_lr = best_result.metrics["config"]["learning_rate"]
-    # return best_lr
     return tune_hyperparams(data_name, model_name, optimizer_type, selection_metric)
 
 def ssl_tune_hyperparams(data_name, model_name, optimizer_type, selection_metric="final_train_accuracy"):
@@ -212,10 +245,10 @@ def ssl_tune_hyperparams(data_name, model_name, optimizer_type, selection_metric
             - final_test_accuracy
     """
     # Search space
-    lrs = [0.00001, 0.00005, 0.0001, 0.0005, 0.001, 0.005, 0.01, 0.05, 0.1, 0.5]
+    lrs = [0.0001, 0.0005, 0.001, 0.005, 0.01, 0.05, 0.1, 0.5]
     temps = [0.05, 0.1, 0.5, 1]
     # Get names
-    exp_name = data_name + "_" + model_name + "_" + optimizer_type
+    exp_name = "ssl_" + data_name + "_" + model_name + "_" + optimizer_type
     storage_path = "/user/work/jd18380/ContinualLearning/tuning"
     experiment_path = f"{storage_path}/{exp_name}"
     # Check if tuning has already been done, if so load and return results
@@ -261,7 +294,7 @@ def ssl_tune_hyperparams(data_name, model_name, optimizer_type, selection_metric
             checkpoint_config=air.CheckpointConfig(
                 checkpoint_score_attribute="final_train_accuracy",
                 checkpoint_score_order="max",
-                num_to_keep=2,
+                num_to_keep=1,
             ),
             storage_path=storage_path,
         )

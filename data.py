@@ -6,6 +6,7 @@ from avalanche.benchmarks.utils import make_classification_dataset
 from torchvision.transforms import ToTensor
 from torch.utils.data import Subset
 from multipledispatch import dispatch
+from torchvision import transforms
 
 def stratify_split(dataset, percentage, seed=None):
     """
@@ -22,6 +23,20 @@ def stratify_split(dataset, percentage, seed=None):
     data2_split = Subset(dataset, data2_indices)
     return data1_split, data2_split
 
+cifar10_train_transform = transforms.Compose(
+    [
+        transforms.ToTensor(),
+        transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
+    ]
+)
+
+cifar100_train_transform = transforms.Compose(
+    [
+        transforms.ToTensor(),
+        transforms.Normalize((0.5071, 0.4865, 0.4409), (0.2673, 0.2564, 0.2762)),
+    ]
+)
+
 @dispatch(str)
 def get_data(name, n_tasks=5, seed=None):
     """
@@ -33,10 +48,10 @@ def get_data(name, n_tasks=5, seed=None):
         data = SplitMNIST(n_experiences=1, shuffle=False, return_task_id=False)
         return 
     elif(name == "CIFAR10"):
-        data = SplitCIFAR10(n_experiences=1, shuffle=False, return_task_id=False)
+        data = SplitCIFAR10(n_experiences=1, shuffle=False, return_task_id=False, train_transform=cifar10_train_transform)
         return data
     elif(name == "CIFAR100"):
-        data = SplitCIFAR100(n_experiences=1, shuffle=False, return_task_id=False)
+        data = SplitCIFAR100(n_experiences=1, shuffle=False, return_task_id=False, train_transform=cifar100_train_transform)
         return data
     elif(name == "ImageNet"):
         data = SplitImageNet(n_experiences=1, shuffle=False, return_task_id=False)
@@ -45,10 +60,10 @@ def get_data(name, n_tasks=5, seed=None):
         data = SplitTinyImageNet(n_experiences=1, shuffle=False, return_task_id=False)
         return data
     elif(name == "SplitCIFAR10"):
-        data = SplitCIFAR10(n_experiences=n_tasks, shuffle=False, return_task_id=False)
+        data = SplitCIFAR10(n_experiences=n_tasks, shuffle=False, return_task_id=False, train_transform=cifar10_train_transform)
         return data
     elif(name == "SplitCIFAR100"):
-        data = SplitCIFAR100(n_experiences=n_tasks, shuffle=False, return_task_id=False)
+        data = SplitCIFAR100(n_experiences=n_tasks, shuffle=False, return_task_id=False, train_transform=cifar100_train_transform)
         return data
     elif(name == "SplitImageNet"):
         data = SplitImageNet(n_experiences=n_tasks, shuffle=False, return_task_id=False)
@@ -84,7 +99,7 @@ def get_data(name, name2, n_tasks=5, strategy={"name":"stratify", "percentage":0
                     seed=seed, 
                     task_labels=False
                     )
-                data2 = make_classification_dataset(data2, task_labels=-1)
+                data2 = make_classification_dataset(data2, task_labels=2)
                 return (scenario, data2)
             else:
                 raise Exception("Not given valid dataset split method currently only support: stratify")

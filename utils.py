@@ -5,11 +5,13 @@ from avalanche.evaluation.metrics import forgetting_metrics, accuracy_metrics, \
     loss_metrics, timing_metrics, cpu_usage_metrics, disk_usage_metrics, forward_transfer_metrics, bwt_metrics, class_accuracy_metrics
 from torch.optim import SGD, Adam
 from torch import cuda
+from torch import device as torch_device
 from plot import training_acc_plot
 from avalanche.training.determinism.rng_manager import RNGManager
 from avalanche.training.checkpoint import maybe_load_checkpoint, save_checkpoint
 import os
 import SimCLR_models as simclr
+from custom_plugins import EpochCheckpointing
 
 def set_seed(seed):
     """Sets the seed for Python's `random`, NumPy, and PyTorch global generators"""
@@ -66,6 +68,33 @@ def get_eval_plugin(name="log", log_tensorboard=True, log_stdout=True, log_csv=F
     )
     return eval_plugin 
 
+def ssl_get_eval_plugin(name="log", log_tensorboard=True, log_stdout=True, log_csv=False, log_text=False):
+    """ Returns an evaluation plugin with the desired loggers."""
+    loggers = []
+    if log_tensorboard:
+        tb_logger = TensorboardLogger(tb_log_dir=name)
+        loggers.append(tb_logger)
+    if log_text:
+        text_logger = TextLogger(open(name+'.txt', 'a'))
+        loggers.append(text_logger)
+    if log_stdout:
+        interactive_logger = InteractiveLogger()
+        loggers.append(interactive_logger)
+    if log_csv:
+        csv_logger = CSVLogger(name+'.csv')
+        loggers.append(csv_logger)
+
+    eval_plugin = EvaluationPlugin(
+        # Metrics that use training stream
+        loss_metrics(minibatch=True, epoch=True, stream=True), 
+        # Other metrics
+        cpu_usage_metrics(experience=True),
+        disk_usage_metrics(experience=True),
+        timing_metrics(epoch=True, epoch_running=True),
+        loggers=loggers
+    )
+    return eval_plugin 
+
 def get_optimizer(optimizer_type, model, learning_rate):
     """ Returns the optimizer with the desired type."""
     if optimizer_type == "SGD":
@@ -78,27 +107,33 @@ def get_optimizer(optimizer_type, model, learning_rate):
         raise ValueError("Optimizer not supported")
     return optimizer
 
-def get_device(device):
+def get_device(device = None):
     """ 
     If device False: sets device to cuda if available, otherwise cpu. 
     If device not false returns value.
     """
-    if device == False:
-        device = 'cuda' if cuda.is_available() else 'cpu'
+    if device is None:
+        device = torch_device('cuda') if cuda.is_available() else torch_device('cpu')
     elif device in ["GPU", "gpu", "cuda", "CUDA"]:
-        device = 'cuda'
+        device = torch_device('cuda')
+    elif(device in ["CPU", "cpu"]):
+        device = torch_device('cpu')
     else:
-        pass
+        raise ValueError("Device not supported")
+    print("Using device: ", device)
     return device
 
-def train(scenario, cl_strategy, name):
-    """ Performs the training loop, supports checkpointing."""
+def train(scenario, cl_strategy, name, device):
+    """ Performs the training loop, checkpointints after each experience and each epoch."""
     fname = "checkpoints/"+name+".pkl"  # name of the checkpoint file
-    cl_strategy, initial_exp = maybe_load_checkpoint(cl_strategy, fname) # load from checkpoint if exists
+    cl_strategy, initial_exp = maybe_load_checkpoint(cl_strategy, fname, map_location=device) # load from checkpoint if exists
+    cl_strategy.device = device
     # if checkpoint directory does not exist, create it
     directory = fname[0:[pos for pos, char in enumerate(fname) if char == "/"][-1]]
     if not os.path.exists(directory):
         os.makedirs(directory)
+    # we add epoch checkpointing plugin to the strategy
+    cl_strategy.plugins.append(EpochCheckpointing(cl_strategy, fname)) #TODO: could I do this in the constructor?
     print('Starting training...')
     # for experience in scenario.train_stream:
     for experience in scenario.train_stream[initial_exp:]:
@@ -117,14 +152,17 @@ def train(scenario, cl_strategy, name):
         save_checkpoint(cl_strategy, fname)
     print('Experiment completed')
 
-def pretrain(scenario, cl_strategy, name):
+def pretrain(scenario, cl_strategy, name, device):
     """ Performs the training loop, supports checkpointing."""
-    fname = "checkpoints/"+ "pre_" + name+".pkl"  # name of the checkpoint file
-    cl_strategy, initial_exp = maybe_load_checkpoint(cl_strategy, fname) # load from checkpoint if exists
+    fname = "checkpoints/"+ name+".pkl"  # name of the checkpoint file
+    cl_strategy, initial_exp = maybe_load_checkpoint(cl_strategy, fname, map_location=device) # load from checkpoint if exists
+    cl_strategy.device = device
     # if checkpoint directory does not exist, create it
     directory = fname[0:[pos for pos, char in enumerate(fname) if char == "/"][-1]]
     if not os.path.exists(directory):
         os.makedirs(directory)
+    # we add epoch checkpointing plugin to the strategy
+    cl_strategy.plugins.append(EpochCheckpointing(cl_strategy, fname)) #TODO: could I do this in the constructor?
     print('Starting pre-training...')
     # for experience in scenario.train_stream:
     for experience in scenario.train_stream[initial_exp:]:

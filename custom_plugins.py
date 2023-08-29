@@ -74,4 +74,4 @@ class EpochCheckpointing(SupervisedPlugin):
         """ 
         We checkpoint after each epoch.
         """
-        save_checkpoint(self.cl_strategy, self.fname)
+        save_checkpoint(self.strategy, self.fname)

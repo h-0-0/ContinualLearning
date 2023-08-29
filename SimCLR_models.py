@@ -45,7 +45,7 @@ class VGG16(SimCLRModel):
     and the feature extractor (frozen) and classifier during eval.
     The input is passed through a feature extractor and then normalized
     before being fed to the projection network or classifier.
-    Uses the same classifier as the VGG16 in model.py
+    Uses a linear classifier.
     """
 
     def __init__(self, num_classes: int, input_channels: int = 3):
@@ -56,9 +56,9 @@ class VGG16(SimCLRModel):
         projection = nn.Sequential(
             nn.Linear(512, 512),
             nn.ReLU(),
-            nn.Linear(512, 512),
+            nn.Linear(512, 128),
         )
-        classifier = model.VGG16(input_channels = input_channels, num_classes = num_classes).fc
+        classifier = nn.Linear(512, num_classes)
         super().__init__(feature_extractor, projection, classifier)
 
 class ResNet18(SimCLRModel):
@@ -68,23 +68,24 @@ class ResNet18(SimCLRModel):
     and the feature extractor (frozen) and classifier during eval.
     The input is passed through a feature extractor and then normalized
     before being fed to the projection network or classifier.
-    Uses the same classifier as the ResNet18 in model.py
+    Uses the same classifier as the ResNet18 in model.py, which is a linear layer.
     """
 
-    def __init__(self, num_classes: int, input_channels: int = 3):
+    def __init__(self, num_classes: int, input_channels: int = 3, classifier_type = None):
         """
         :param num_classes: number of classes in the dataset
         """
+        resnet18 = model.ResNet18(input_channels = input_channels, num_classes = num_classes)
         feature_extractor = nn.Sequential(
-            nn.Sequential(*list(model.ResNet18(input_channels = input_channels, num_classes = num_classes).children())[:-1]),
+            nn.Sequential(*list(resnet18.children())[:-1]),
             nn.Flatten()
         )
         projection = nn.Sequential(
-            nn.Linear(512, 512),
+            nn.Linear(3072, 512),
             nn.ReLU(),
-            nn.Linear(512, 512),
+            nn.Linear(512, 128),
         )
-        classifier = model.ResNet18(input_channels = input_channels, num_classes = num_classes).fc
+        classifier = resnet18.model.fc
         super().__init__(feature_extractor, projection, classifier)
 
 class ResNet50(SimCLRModel):
@@ -94,21 +95,22 @@ class ResNet50(SimCLRModel):
     and the feature extractor (frozen) and classifier during eval.
     The input is passed through a feature extractor and then normalized
     before being fed to the projection network or classifier.
-    Uses the same classifier as the ResNet50 in model.py
+    Uses the same classifier as the ResNet50 in model.py, which is a linear layer.
     """
 
     def __init__(self, num_classes: int, input_channels: int = 3):
         """
         :param num_classes: number of classes in the dataset
         """
+        resnet50 = model.ResNet50(input_channels = input_channels, num_classes = num_classes)
         feature_extractor = nn.Sequential(
-            nn.Sequential(*list(model.ResNet50(input_channels = input_channels, num_classes = num_classes).children())[:-1]),
+            nn.Sequential(*list(resnet50.children())[:-1]),
             nn.Flatten()
         )
         projection = nn.Sequential(
             nn.Linear(2048, 512),
             nn.ReLU(),
-            nn.Linear(512, 512),
+            nn.Linear(512, 128),
         )
-        classifier = model.ResNet50(input_channels = input_channels, num_classes = num_classes).fc
+        classifier = resnet50.model.fc
         super().__init__(feature_extractor, projection, classifier)

@@ -43,7 +43,8 @@ def main(args):
             ssl_batch_size = args.ssl_batch_size,
             class_batch_size = args.class_batch_size,
             learning_rate = args.learning_rate, 
-            epochs = args.epochs,
+            ssl_epochs = args.ssl_epochs,
+            class_epochs = args.class_epochs,
             n_tasks = args.n_tasks,
             device = args.device, 
             optimizer_type = args.optimizer_type, 
@@ -89,7 +90,7 @@ if __name__ == "__main__":
 
     # Argument for self supervised learning
     parser.add_argument("--temperature", type=float, help="Temperature for self supervised learning, default: 0.5", default=0.5)
-    parser.add_argument("--ssl_batch_size", type=int, help="Batch size for self supervised learning, default: 4096", default=4096)
+    parser.add_argument("--ssl_batch_size", type=int, help="Batch size for self supervised learning, default: 512", default=512)
     parser.add_argument("--class_batch_size", type=int, help="Batch size for training classifier after self supervised learning, default: 256", default=256)
     parser.add_argument("--ssl_epochs", type=int, help="Number of epochs for self supervised learning, default: 100", default=100)
     parser.add_argument("--class_epochs", type=int, help="Number of epochs for training classifier after self supervised learning, default: 100", default=100)

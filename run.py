@@ -4,11 +4,13 @@ from avalanche.training.templates import SupervisedTemplate
 from avalanche.training.supervised.strategy_wrappers import Naive
 from avalanche.training.plugins.early_stopping import EarlyStoppingPlugin
 import torchvision.transforms as transforms
+from torch.optim import lr_scheduler
+from avalanche.training.plugins.lr_scheduling import LRSchedulerPlugin
 
 from custom_plugins import BatchSplitReplay, FixedBuffer
 import data as data
 from param_tune import tune_hyperparams, ssl_tune_hyperparams
-from utils import set_seed, get_eval_plugin, get_optimizer, get_device, get_model, train, pretrain
+from utils import set_seed, get_eval_plugin, ssl_get_eval_plugin, get_optimizer, get_device, get_model, train, pretrain
 import self_supervised as ss
 
 def regular(data_name, model_name, batch_size, learning_rate, epochs, n_tasks, device, optimizer_type, seed, early_stopping):
@@ -24,6 +26,7 @@ def regular(data_name, model_name, batch_size, learning_rate, epochs, n_tasks, d
 
     # CREATE NAME FOR LOGGING, CHECKPOINTING, ETC
     name = data_name + "_" + str(n_tasks) + "_tasks" + "/" + model_name + "/" + optimizer_type +  "/regular/lr_" + str(learning_rate)
+    print("Experiment name: " ,name)
 
     # GET DATA
     scenario = data.get_data(data_name, n_tasks=n_tasks, seed=seed)
@@ -37,9 +40,14 @@ def regular(data_name, model_name, batch_size, learning_rate, epochs, n_tasks, d
 
     # SETUP OTHER PLUGINS
     if early_stopping > 0:
-        plugins = [EarlyStoppingPlugin(early_stopping, "train_stream")]
+        plugins = [
+            EarlyStoppingPlugin(early_stopping, "train_stream"),
+            LRSchedulerPlugin(lr_scheduler.CosineAnnealingLR(optimizer, T_max=epochs))
+        ]
     else:
-        plugins = []
+        plugins = [
+            LRSchedulerPlugin(lr_scheduler.CosineAnnealingLR(optimizer, T_max=epochs))
+        ]
 
     # CREATE OPTIMIZER
     optimizer = get_optimizer(optimizer_type, model, learning_rate)
@@ -55,7 +63,7 @@ def regular(data_name, model_name, batch_size, learning_rate, epochs, n_tasks, d
     )
 
     # TRAINING LOOP
-    train(scenario, cl_strategy, name)
+    train(scenario, cl_strategy, name, device)
 
 def fixed_replay_stratify(data_name, model_name, batch_size, learning_rate, epochs, n_tasks, device, optimizer_type, seed, early_stopping, data2_name, batch_ratio, percentage):
     # SET THE SEED 
@@ -67,6 +75,7 @@ def fixed_replay_stratify(data_name, model_name, batch_size, learning_rate, epoc
 
     # CREATE NAME FOR LOGGING, CHECKPOINTING, ETC
     name = data_name + "_" + str(n_tasks) + "_tasks" + "/" + model_name + "/" + optimizer_type +  "/fixed_replay_stratify/percent_" + str(percentage) + "_ratio_" + str(batch_ratio) + "_lr_" + str(learning_rate)
+    print("Experiment name: " ,name)
 
     # HANDLE DEVICE
     device = get_device(device)
@@ -89,11 +98,13 @@ def fixed_replay_stratify(data_name, model_name, batch_size, learning_rate, epoc
     if early_stopping > 0:
         plugins =[
             BatchSplitReplay(FixedBuffer, buffer_data, max_size=len(buffer_data), bs1=bs_bench, bs2=bs_replay),
+            LRSchedulerPlugin(lr_scheduler.CosineAnnealingLR(optimizer, T_max=epochs)),
             EarlyStoppingPlugin(early_stopping, "train_stream")
         ]
     else:
         plugins = [
-            BatchSplitReplay(FixedBuffer, buffer_data, max_size=len(buffer_data), bs1=bs_bench, bs2=bs_replay)
+            BatchSplitReplay(FixedBuffer, buffer_data, max_size=len(buffer_data), bs1=bs_bench, bs2=bs_replay),
+            LRSchedulerPlugin(lr_scheduler.CosineAnnealingLR(optimizer, T_max=epochs))
         ]
 
     # CREATE OPTIMIZER
@@ -110,7 +121,7 @@ def fixed_replay_stratify(data_name, model_name, batch_size, learning_rate, epoc
     )
 
     # TRAINING LOOP
-    train(scenario, cl_strategy, name)
+    train(scenario, cl_strategy, name, device)
 
 def ssl(data_name, data2_name, model_name, ssl_batch_size, class_batch_size, learning_rate, ssl_epochs, class_epochs, n_tasks, device, optimizer_type, seed, early_stopping, temperature):
     # SET THE SEED 
@@ -125,7 +136,8 @@ def ssl(data_name, data2_name, model_name, ssl_batch_size, class_batch_size, lea
             temperature = tune_temperature
 
     # CREATE NAME FOR LOGGING, CHECKPOINTING, ETC
-    name = data_name + "/" + model_name + "/" + optimizer_type +  "/ssl/lr_" + str(learning_rate)
+    name = data_name + "_" + str(n_tasks) + "_tasks" + "/" + model_name + "/" + optimizer_type +  "/ssl/lr_" + str(learning_rate) + "_temp_" + str(temperature) + "_pre"
+    print("Experiment name: " ,name)
 
     # HANDLE DEVICE
     device = get_device(device)
@@ -139,19 +151,20 @@ def ssl(data_name, data2_name, model_name, ssl_batch_size, class_batch_size, lea
     model = get_model("SimCLR_" + model_name, device, num_classes)
 
     # DEFINE THE EVALUATION PLUGIN and LOGGERS
-    eval_plugin = get_eval_plugin(name="log/"+ name, track_classes=[j for i in class_scenario.original_classes_in_exp for j in i]) 
+    eval_plugin = ssl_get_eval_plugin(name="log/"+ name) 
+
+    # CREATE OPTIMIZER
+    optimizer = get_optimizer(optimizer_type, model, learning_rate)
 
     # SETUP OTHER PLUGINS
     # Construct the plugins
     if early_stopping > 0:
         plugins =[
-            EarlyStoppingPlugin(early_stopping, "train_stream")
+            EarlyStoppingPlugin(early_stopping, "train_stream"),
+            LRSchedulerPlugin(lr_scheduler.CosineAnnealingLR(optimizer, T_max=ssl_epochs))
         ]
     else:
-        plugins = []
-
-    # CREATE OPTIMIZER
-    optimizer = get_optimizer(optimizer_type, model, learning_rate)
+        plugins = [LRSchedulerPlugin(lr_scheduler.CosineAnnealingLR(optimizer, T_max=ssl_epochs))]
 
     # DEFINE THE AUGMENTATIONS
     # we define lambda functions for the augmentations
@@ -185,17 +198,25 @@ def ssl(data_name, data2_name, model_name, ssl_batch_size, class_batch_size, lea
         plugins=plugins
     )
     # train
-    pretrain(pre_scenario, ssl_strategy, name)
-    ssl_strategy.done_pretraining(class_batch_size, class_epochs)
+    pretrain(pre_scenario, ssl_strategy, name, device)
 
     # TRAIN CLASSIFIER
+    name = name[:-4] + "_classification"
+    eval_plugin = get_eval_plugin(name="log/"+ name, track_classes=[j for i in class_scenario.original_classes_in_exp for j in i])
+    eval_strategy = ss.SimCLR(
+        model, optimizer,
+        augmentations=augs, temperature=temperature,
+        train_mb_size=class_batch_size, train_epochs=class_epochs, eval_mb_size=class_batch_size,
+        evaluator=eval_plugin,
+        device = device
+    )
+    eval_strategy.done_pretraining()
     # train
-    train(class_scenario, ssl_strategy, name)  
+    train(class_scenario, eval_strategy, name, device)  
 
-# TODO: metric logging for ssl most likely needs to be changed
-# TODO: logging, checkpointing structure for ssl also most likely needs to be changed
 # TODO: check ssl tuning is working correctly, check tensor logs etc.
+# TODO: tidy the ssl, split into two different training routines and make it so SimCLR only does the ssl, not the classification (that should be done in a separate training routine)
+# TODO: Buffer for ssl
 
-# TODO: add lr sheduling
 # TODO: set the scipy RNG in set_seed so can remove the need for passing seed to get_data
 # TODO: if you run experiment from checkpoint does logging continue from where it left off?

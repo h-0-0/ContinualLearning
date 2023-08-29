@@ -1,13 +1,15 @@
 from typing import Optional, Sequence
 
 import torch
-from torch.nn import Module
+from torch.nn import Module, functional
 from torch.optim import Optimizer
 from torchvision.transforms import Compose, Lambda
 
 from avalanche.core import BaseSGDPlugin
 from avalanche.training.plugins.evaluation import default_evaluator
 from avalanche.training.templates import SupervisedTemplate
+from avalanche.training.plugins.lr_scheduling import LRSchedulerPlugin
+
 
 class NTXentLoss(torch.nn.Module):
     """
@@ -19,7 +21,7 @@ class NTXentLoss(torch.nn.Module):
         super().__init__()
         self.temperature = temperature
 
-    def forward(self, features):
+    def forward(self, x):
         """
         # TODO: edit this docstring
         Compute loss for model. If both `labels` and `mask` are None,
@@ -38,22 +40,22 @@ class NTXentLoss(torch.nn.Module):
         Returns:
             A loss scalar.
         """
-        device = features.device
-        # First we compute the pairwise cosine similarity matrix 
-        sim_mat = torch.nn.functional.cosine_similarity(
-            features.unsqueeze(1), features.unsqueeze(0), dim=-1
-        )
-        # Mask out cosine similarity to itself
-        self_mask = torch.eye(sim_mat.shape[0], dtype=torch.bool, device=device)
-        sim_mat.masked_fill_(self_mask, -9e15)
-        # Find positive example -> batch_size//2 away from the original example
-        pos_mask = self_mask.roll(shifts=sim_mat.shape[0] // 2, dims=0)
-        # InfoNCE loss
-        sim_mat = sim_mat / self.temperature
-        nll = -sim_mat[pos_mask] + torch.logsumexp(sim_mat, dim=-1)
-        nll = nll.mean()
+        device = x.device
 
-        return nll
+        # First we compute pairwise normalized similarities
+        x = functional.normalize(x, dim=1)
+        x_scores =  (x @ x.t()).clamp(min=1e-7)  # normalized cosine similarity scores
+        x_scale = x_scores / self.temperature   # scale with temperature
+
+        # (2N-1)-way softmax without the score of i-th entry itself.
+        # Set the diagonals to be large negative values, which become zeros after softmax.
+        x_scale = x_scale - torch.eye(x_scale.size(0)).to(device) * 1e5
+
+        # targets 2N elements.
+        targets = torch.arange(x.size()[0])
+        targets[::2] += 1  # target of 2k element is 2k+1
+        targets[1::2] -= 1  # target of 2k+1 element is 2k
+        return functional.cross_entropy(x_scale, targets.long().to(device))
 
 
 class SimCLR(SupervisedTemplate):
@@ -163,14 +165,32 @@ class SimCLR(SupervisedTemplate):
         """
         Augment images for current mini-batch.
         """
-        # TODO: this bit correct?
-        assert self.is_pretraining
-        super()._before_forward(**kwargs)
-        mb_x_augmented = self.augmentations(self.mbatch[0])
-        self.mbatch[0] = mb_x_augmented
+        if self.is_pretraining:
+            super()._before_forward(**kwargs)
+            mb_x_augmented_1 = self.augmentations(self.mbatch[0])
+            mb_x_augmented_2 = self.augmentations(self.mbatch[0])
+            # We interleave augmented images
+            mb_x_augmented = torch.cat([mb_x_augmented_1, mb_x_augmented_2], dim=0)
+            n = mb_x_augmented_1.shape[0]
+            indices = [[i, n+i] for i in range(n)]
+            indices = [item for sublist in indices for item in sublist]
+            mb_x_augmented_sorted = torch.zeros_like(mb_x_augmented)
+            for i, ind in enumerate(indices):
+                mb_x_augmented_sorted[i] = mb_x_augmented[ind]
+            self.mbatch[0] = mb_x_augmented
+            # TODO: make this more efficient
+        else:
+            super()._before_forward(**kwargs)
     
-    def done_pretraining(self, new_batch_size = None, new_epochs = None):
+    def done_pretraining(self):
+        """
+        Once ssl is done we set is_pretraining to false so we now train using the classifer head (and freeze the encoder),
+        and we set the train_epochs and train_mb_size to the values we want to use for training the classifier head.
+        We also remove the LRSchedulerPlugin that was used for ssl and reset the optimizer if its effective lr changes.
+        """
         self.is_pretraining = False
         self.model.pretraining = False
-        self.train_mb_size = new_batch_size if new_batch_size is not None else self.train_mb_size
-        self.train_epochs = new_epochs if new_epochs is not None else self.train_epochs
+        if (type (self.optimizer).__name__ == 'SGD') and (self.optimizer.defaults['momentum'] != 0):
+            self.optimizer = torch.optim.SGD(self.model.parameters(), lr=self.optimizer.lr, momentum=0.9)
+        if (type (self.optimizer).__name__ == 'Adam'):
+            self.optimizer = torch.optim.Adam(self.model.parameters(), lr=self.optimizer.lr)

@@ -89,27 +89,27 @@ class VGG16(nn.Module):
 class ResNet18(nn.Module):
     def __init__(self, num_classes: int, input_channels = 3):
         super(ResNet18, self).__init__()
-        self.resnet18 = resnet18(weights=None)
-        self.resnet18.conv1 = nn.Conv2d(input_channels, 64, kernel_size=7, stride=2, padding=3, bias=False)
-        self.resnet18.fc = nn.Linear(512, num_classes)
+        self.model = resnet18(weights=None)
+        self.model.conv1 = nn.Conv2d(input_channels, 64, kernel_size=7, stride=2, padding=3, bias=False)
+        self.model.fc = nn.Linear(512, num_classes)
         self.device = None
 
     # Compute forward pass
     def forward(self, x):
-        return self.resnet18(x)
+        return self.model(x)
     
 # Class for ResNet50 from torchvision
 class ResNet50(nn.Module):
     def __init__(self, num_classes: int, input_channels = 3):
         super(ResNet50, self).__init__()
-        self.resnet50 = resnet50(weights=None)
-        self.resnet50.conv1 = nn.Conv2d(input_channels, 64, kernel_size=7, stride=2, padding=3, bias=False)
-        self.resnet50.fc = nn.Linear(2048, num_classes)
+        self.model = resnet50(weights=None)
+        self.model.conv1 = nn.Conv2d(input_channels, 64, kernel_size=7, stride=2, padding=3, bias=False)
+        self.model.fc = nn.Linear(2048, num_classes)
         self.device = None
 
     # Compute forward pass
     def forward(self, x):
-        return self.resnet50(x)
+        return self.model(x)
 
 # Main function that instantiates all models and prints their architectures
 # to facilitate a quick view of avaliable models
