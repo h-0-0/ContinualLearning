@@ -79,7 +79,7 @@ def ssl_run_config(config):
     learning_rate = config["learning_rate"]
     temperature = config["temperature"]
 
-    name = "tune_log/"+ data_name + "/" + model_name + "/" + optimizer_type + "/lr_" + str(learning_rate) + "_temp_" + str(temperature) + "_pre"
+    name = "tune_log/"+ data_name + "/" + model_name + "/" + optimizer_type + "/lr_" + str(learning_rate) + "_temp_" + str(temperature) + "_ssl"
 
     # HANDLE DEVICE
     device = get_device()
@@ -117,6 +117,9 @@ def ssl_run_config(config):
     for experience in ssl_scenario.train_stream:
         # we train the model on the current experience
         ssl_strategy.train(experience)
+
+        # we test the model on the full test stream
+        ssl_strategy.eval(ssl_scenario.test_stream)
     done_train_ssl(model, optimizer)
 
     # Perform classification to test ssl

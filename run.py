@@ -10,7 +10,7 @@ from avalanche.training.plugins.lr_scheduling import LRSchedulerPlugin
 from custom_plugins import BatchSplitReplay, FixedBuffer
 import data as data
 from param_tune import tune_hyperparams, ssl_tune_hyperparams
-from utils import set_seed, get_eval_plugin, ssl_get_eval_plugin, get_optimizer, get_device, get_model, train, ssl_train, get_augmentations, done_train_ssl
+from utils import set_seed, get_eval_plugin, ssl_get_eval_plugin, get_optimizer, get_device, get_model, train, get_augmentations, done_train_ssl
 import self_supervised as ss
 
 def regular(data_name, model_name, batch_size, learning_rate, epochs, n_tasks, device, optimizer_type, seed, early_stopping):
@@ -136,7 +136,7 @@ def ssl(data_name, data2_name, model_name, ssl_batch_size, class_batch_size, lea
             temperature = tune_temperature
 
     # CREATE NAME FOR LOGGING, CHECKPOINTING, ETC
-    name = data_name + "_" + str(n_tasks) + "_tasks" + "/" + model_name + "/" + optimizer_type +  "/ssl/lr_" + str(learning_rate) + "_temp_" + str(temperature) + "_pre"
+    name = data_name + "_" + str(n_tasks) + "_tasks" + "/" + model_name + "/" + optimizer_type +  "/ssl/lr_" + str(learning_rate) + "_temp_" + str(temperature) + "_ssl"
     print("Experiment name: " ,name)
 
     # HANDLE DEVICE
@@ -180,7 +180,7 @@ def ssl(data_name, data2_name, model_name, ssl_batch_size, class_batch_size, lea
         plugins = plugins
     )
     # train
-    ssl_train(ssl_scenario, ssl_strategy, name, device)
+    train(ssl_scenario, ssl_strategy, name, device)
     done_train_ssl(model, optimizer) # absorb this into training strategy, is there after all experiences callback?
 
     # TRAIN CLASSIFIER

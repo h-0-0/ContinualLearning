@@ -156,31 +156,6 @@ def train(scenario, cl_strategy, name, device):
         save_checkpoint(cl_strategy, fname)
     print('Experiment completed')
 
-def ssl_train(scenario, cl_strategy, name, device):
-    """ Performs the training loop, supports checkpointing."""
-    fname = "checkpoints/"+ name+".pkl"  # name of the checkpoint file
-    cl_strategy, initial_exp = maybe_load_checkpoint(cl_strategy, fname, map_location=device) # load from checkpoint if exists
-    cl_strategy.device = device
-    # if checkpoint directory does not exist, create it
-    directory = fname[0:[pos for pos, char in enumerate(fname) if char == "/"][-1]]
-    if not os.path.exists(directory):
-        os.makedirs(directory)
-    # we add epoch checkpointing plugin to the strategy
-    cl_strategy.plugins.append(EpochCheckpointing(cl_strategy, fname)) #TODO: could I do this in the constructor?
-    print('Starting pre-training...')
-    # for experience in scenario.train_stream:
-    for experience in scenario.train_stream[initial_exp:]:
-        print("Start of experience: ", experience.current_experience)
-        print("Current Classes: ", experience.classes_in_this_experience)
-
-        # we train
-        cl_strategy.train(experience)
-        print('Training completed')
-
-        # we checkpoint (save the model)
-        save_checkpoint(cl_strategy, fname)
-    print('Experiment completed')
-
 def plot_results(eval_plugin, fname=None):
     """ Plots the results from the metrics."""
     all_metrics = eval_plugin.get_all_metrics()
