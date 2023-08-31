@@ -35,6 +35,9 @@ def regular(data_name, model_name, batch_size, learning_rate, epochs, n_tasks, d
     num_classes = len([item for sublist in scenario.original_classes_in_exp for item in sublist]) # so we set the output layer to the correct size
     model = get_model(model_name, device, num_classes)
 
+    # CREATE OPTIMIZER
+    optimizer = get_optimizer(optimizer_type, model, learning_rate)
+
     # DEFINE THE EVALUATION PLUGIN and LOGGERS
     eval_plugin = get_eval_plugin(name, track_classes=[j for i in scenario.original_classes_in_exp for j in i])
 
@@ -48,9 +51,6 @@ def regular(data_name, model_name, batch_size, learning_rate, epochs, n_tasks, d
         plugins = [
             LRSchedulerPlugin(lr_scheduler.CosineAnnealingLR(optimizer, T_max=epochs))
         ]
-
-    # CREATE OPTIMIZER
-    optimizer = get_optimizer(optimizer_type, model, learning_rate)
 
     # CREATE THE STRATEGY INSTANCE (NAIVE)
     cl_strategy = Naive(
@@ -87,6 +87,9 @@ def fixed_replay_stratify(data_name, model_name, batch_size, learning_rate, epoc
     num_classes = len([item for sublist in scenario.original_classes_in_exp for item in sublist]) # so we set the output layer to the correct size
     model = get_model(model_name, device, num_classes)
 
+    # CREATE OPTIMIZER
+    optimizer = get_optimizer(optimizer_type, model, learning_rate)
+
     # DEFINE THE EVALUATION PLUGIN and LOGGERS
     eval_plugin = get_eval_plugin(name, track_classes=[j for i in scenario.original_classes_in_exp for j in i]) 
 
@@ -106,9 +109,6 @@ def fixed_replay_stratify(data_name, model_name, batch_size, learning_rate, epoc
             BatchSplitReplay(FixedBuffer, buffer_data, max_size=len(buffer_data), bs1=bs_bench, bs2=bs_replay),
             LRSchedulerPlugin(lr_scheduler.CosineAnnealingLR(optimizer, T_max=epochs))
         ]
-
-    # CREATE OPTIMIZER
-    optimizer = get_optimizer(optimizer_type, model, learning_rate)
 
     # CREATE THE STRATEGY INSTANCE
     # Construct the strategy
