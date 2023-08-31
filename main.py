@@ -50,7 +50,8 @@ def main(args):
             optimizer_type = args.optimizer_type, 
             seed = args.seed,
             early_stopping = args.early_stopping,
-            temperature=args.temperature
+            temperature=args.temperature,
+            replay=args.replay
         )
     
 
@@ -94,6 +95,7 @@ if __name__ == "__main__":
     parser.add_argument("--class_batch_size", type=int, help="Batch size for training classifier after self supervised learning, default: 256", default=256)
     parser.add_argument("--ssl_epochs", type=int, help="Number of epochs for self supervised learning, default: 100", default=100)
     parser.add_argument("--class_epochs", type=int, help="Number of epochs for training classifier after self supervised learning, default: 100", default=100)
+    parser.add_argument("--replay", type=int, help="Do we want to use a replay buffer, if 0 will not use one, if bigger than zero will use buffer of that size, default: 0", default=0)
 
     # Parse arguments
     args = parser.parse_args()
@@ -114,6 +116,8 @@ if __name__ == "__main__":
             raise ValueError("ssl_epochs is for when using the ssl strategy")
         elif any(filter(lambda x: "--class_epochs" in x, sys.argv)):
             raise ValueError("class_epochs is for when using the ssl strategy")
+        elif any(filter(lambda x: "--replay" in x, sys.argv)):
+            raise ValueError("replay is for when using the ssl strategy")
     if(args.strategy == "ssl"):
         if any(filter(lambda x: "--batch_size" in x, sys.argv)):
             raise ValueError("Cannot set batch size when using ssl strategy, please set ssl_batch_size and class_batch_size instead")

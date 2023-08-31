@@ -6,6 +6,8 @@ from avalanche.training.plugins.early_stopping import EarlyStoppingPlugin
 import torchvision.transforms as transforms
 from torch.optim import lr_scheduler
 from avalanche.training.plugins.lr_scheduling import LRSchedulerPlugin
+from avalanche.training.plugins import ReplayPlugin
+from avalanche.training.storage_policy import ReservoirSamplingBuffer
 
 from custom_plugins import BatchSplitReplay, FixedBuffer
 import data as data
@@ -123,7 +125,7 @@ def fixed_replay_stratify(data_name, model_name, batch_size, learning_rate, epoc
     # TRAINING LOOP
     train(scenario, cl_strategy, name, device)
 
-def ssl(data_name, data2_name, model_name, ssl_batch_size, class_batch_size, learning_rate, ssl_epochs, class_epochs, n_tasks, device, optimizer_type, seed, early_stopping, temperature):
+def ssl(data_name, data2_name, model_name, ssl_batch_size, class_batch_size, learning_rate, ssl_epochs, class_epochs, n_tasks, device, optimizer_type, seed, early_stopping, temperature, replay):
     # SET THE SEED 
     set_seed(seed)
 
@@ -136,7 +138,10 @@ def ssl(data_name, data2_name, model_name, ssl_batch_size, class_batch_size, lea
             temperature = tune_temperature
 
     # CREATE NAME FOR LOGGING, CHECKPOINTING, ETC
-    name = data_name + "_" + str(n_tasks) + "_tasks" + "/" + model_name + "/" + optimizer_type +  "/ssl/lr_" + str(learning_rate) + "_temp_" + str(temperature) + "_ssl"
+    if replay > 0:
+        name = data_name + "_" + str(n_tasks) + "_tasks" + "/" + model_name + "/" + optimizer_type +  "/ssl/lr_" + str(learning_rate) + "_temp_" + str(temperature) + "_reservoir_buffer_" + str(replay) + "_ssl"
+    else:
+        name = data_name + "_" + str(n_tasks) + "_tasks" + "/" + model_name + "/" + optimizer_type +  "/ssl/lr_" + str(learning_rate) + "_temp_" + str(temperature) + "_ssl"
     print("Experiment name: " ,name)
 
     # HANDLE DEVICE
@@ -155,13 +160,15 @@ def ssl(data_name, data2_name, model_name, ssl_batch_size, class_batch_size, lea
 
     # SETUP OTHER PLUGINS
     # Construct the plugins
+    plugins = [LRSchedulerPlugin(lr_scheduler.CosineAnnealingLR(optimizer, T_max=ssl_epochs))]
     if early_stopping > 0:
-        plugins =[
-            EarlyStoppingPlugin(early_stopping, "train_stream"),
-            LRSchedulerPlugin(lr_scheduler.CosineAnnealingLR(optimizer, T_max=ssl_epochs))
-        ]
-    else:
-        plugins = [LRSchedulerPlugin(lr_scheduler.CosineAnnealingLR(optimizer, T_max=ssl_epochs))]
+        plugins.append(EarlyStoppingPlugin(early_stopping, "train_stream"))
+    elif replay > 0:
+        storage_policy = ReservoirSamplingBuffer(max_size=replay)
+        replay_plugin = ReplayPlugin(
+            mem_size=replay, storage_policy=storage_policy
+        )
+        plugins.append(replay_plugin)
 
     # DEFINE THE AUGMENTATIONS
     augs = get_augmentations(ssl_scenario)
@@ -192,7 +199,7 @@ def ssl(data_name, data2_name, model_name, ssl_batch_size, class_batch_size, lea
         train_mb_size = class_batch_size, eval_mb_size = class_batch_size,
         evaluator = eval_plugin,
         device = device,
-        plugins = plugins
+        plugins = [LRSchedulerPlugin(lr_scheduler.CosineAnnealingLR(optimizer, T_max=class_epochs))]
     )
     # train
     train(class_scenario, class_strategy, name, device)  
