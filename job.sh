@@ -4,14 +4,13 @@
 #SBATCH --partition=gpu
 #SBATCH --tasks-per-node=1
 #SBATCH --cpus-per-task=1
-#SBATCH --gres=gpu:4
-#SBATCH --job-name=VGG16_Batch
-#SBATCH --nodes=1
-#SBATCH --time=50:00:00
-#SBATCH --mem=25G
+#SBATCH --gres=gpu:8
+#SBATCH --job-name=8ssl50
+#SBATCH --time=25:00:00
+#SBATCH --mem-per-gpu=5G
 #SBATCH --account MATH021322
 
-
+# --nodes=1
 # Define executable
 export EXE=/bin/hostname
 
@@ -33,12 +32,12 @@ nvidia-smi --query-gpu=name --format=csv,noheader
 source ../pyvenv/bin/activate
 
 # Regular CL
-python main.py --epochs=200 --optimizer_type="SGD" --model_name="VGG16" --n_tasks=1
+# python main.py --epochs=30 --optimizer_type="SGD" --model_name="ResNet50" --n_tasks=5
 
 # CL scenario where we stratify the SplitCIFAR10 dataset into two different datasets
-# python main.py --epochs=15 --optimizer_type="SGD" --strategy="fixed_replay_stratify" --data2_name="SplitCIFAR10" --batch_ratio=0.8 --percentage=0.8 --model_name="VGG16"
+# python main.py --epochs=30 --optimizer_type="SGD" --strategy="fixed_replay_stratify" --data2_name="SplitCIFAR10" --batch_ratio=0.8 --percentage=0.8 --model_name="VGG16"
 
 # SSL in batch scenario
-# python main.py --ssl_epochs=100 --class_epochs=200 --optimizer_type="SGD" --strategy="ssl" --data_name="SplitCIFAR10" --n_tasks=1 --data2_name="CIFAR10" --model_name="VGG16" --ssl_batch_size=512
+python main.py --ssl_epochs=100 --class_epochs=100 --optimizer_type="SGD" --strategy="ssl" --data_name="SplitCIFAR10" --n_tasks=1 --data2_name="CIFAR10" --model_name="ResNet50" --ssl_batch_size=512
 
 echo End Time: $(date)

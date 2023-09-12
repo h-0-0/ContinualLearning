@@ -93,7 +93,7 @@ def fixed_replay_stratify(data_name, model_name, batch_size, learning_rate, epoc
     optimizer = get_optimizer(optimizer_type, model, learning_rate)
 
     # DEFINE THE EVALUATION PLUGIN and LOGGERS
-    eval_plugin = get_eval_plugin(name, track_classes=[j for i in scenario.original_classes_in_exp for j in i]) 
+    eval_plugin = get_eval_plugin(name, track_classes={0: [0,1,2,3,4,5,6,7,8,9], 2: [0,1,2,3,4,5,6,7,8,9]}) #TODO: make this automatic for dataset
 
     # SETUP OTHER PLUGINS
     # Construct batch sizes for benchmark and replay

@@ -11,7 +11,7 @@ from avalanche.training.determinism.rng_manager import RNGManager
 from avalanche.training.checkpoint import maybe_load_checkpoint, save_checkpoint
 import os
 import SimCLR_models as simclr
-from custom_plugins import EpochCheckpointing
+from custom_plugins import EpochCheckpointing, EpochTesting
 import torchvision.transforms as transforms
 import torch
 
@@ -137,7 +137,7 @@ def train(scenario, cl_strategy, name, device):
     if not os.path.exists(directory):
         os.makedirs(directory)
     # we add epoch checkpointing plugin to the strategy
-    cl_strategy.plugins.append(EpochCheckpointing(cl_strategy, fname)) #TODO: could I do this in the constructor?
+    cl_strategy.plugins = cl_strategy.plugins + [EpochCheckpointing(cl_strategy, fname), EpochTesting(scenario.test_stream)] #TODO: could I do this in the constructor?
     print('Starting training...')
     # for experience in scenario.train_stream:
     for experience in scenario.train_stream[initial_exp:]:
@@ -147,10 +147,6 @@ def train(scenario, cl_strategy, name, device):
         # we train
         cl_strategy.train(experience)
         print('Training completed')
-
-        # we evaluate
-        cl_strategy.eval(scenario.test_stream)
-        print("Eval completed")
 
         # we checkpoint (save the model)
         save_checkpoint(cl_strategy, fname)
@@ -175,10 +171,10 @@ def get_augmentations(scenario):
     """
     # we define lambda functions for the augmentations
     _, og_height, og_width = scenario.original_train_dataset[0][0].shape
-    random_resized_crop_lambda = transforms.Lambda(
+    random_resized_crop_lambda_twice_per_image = transforms.Lambda(
         lambda imgs: 
             stack(
-                [transforms.RandomResizedCrop(size=(og_height, og_width), scale=(0.2, 0.8), antialias=True)(img) for img in imgs]
+                [transforms.RandomResizedCrop(size=(og_height, og_width), scale=(0.2, 0.8), antialias=True)(img) for img in imgs for _ in range(2)]
             )
     )
     color_distort_lambda = transforms.Lambda(
@@ -189,7 +185,7 @@ def get_augmentations(scenario):
     )
     # we create a composition of transformations including the lambda functions
     augmentations = transforms.Compose([
-        random_resized_crop_lambda,    # Apply random cropping and resizing to original size
+        random_resized_crop_lambda_twice_per_image,    # Apply random cropping and resizing to original size
         color_distort_lambda           # Apply color distortion
     ]) 
     return augmentations

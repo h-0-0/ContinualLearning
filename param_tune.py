@@ -127,7 +127,7 @@ def ssl_run_config(config):
     eval_plugin = get_eval_plugin(name, track_classes=[j for i in class_scenario.original_classes_in_exp for j in i])
     class_strategy = Naive(
         model, optimizer,
-        criterion = CrossEntropyLoss(), train_epochs = 200,
+        criterion = CrossEntropyLoss(), train_epochs = 100,
         train_mb_size = 256, eval_mb_size = 256,
         evaluator = eval_plugin,
         device = device
@@ -243,7 +243,7 @@ def ssl_tune_hyperparams(data_name, model_name, optimizer_type, selection_metric
     experiment_path = f"{storage_path}/{exp_name}"
     # Check if tuning has already been done, if so load and return results
     try: 
-        restored_tuner = tune.Tuner.restore(experiment_path, trainable=run_config, resume_errored=True)
+        restored_tuner = tune.Tuner.restore(experiment_path, trainable=ssl_run_config, resume_errored=True)
         result_grid = restored_tuner.get_results()
         tuned_lrs = []
         tuned_temps = []
@@ -275,7 +275,7 @@ def ssl_tune_hyperparams(data_name, model_name, optimizer_type, selection_metric
         "temperature": tune.grid_search(temps)
     }
     trial_space = {**static_params, **trial_space}
-    train_model = tune.with_resources(run_config, {"gpu": 1})
+    train_model = tune.with_resources(ssl_run_config, {"gpu": 1})
     tuner = tune.Tuner(
         train_model,
         param_space=trial_space,
@@ -291,4 +291,4 @@ def ssl_tune_hyperparams(data_name, model_name, optimizer_type, selection_metric
     )
     result_grid = tuner.fit()
     shutdown()
-    return tune_hyperparams(data_name, model_name, optimizer_type, selection_metric)
+    return ssl_tune_hyperparams(data_name, model_name, optimizer_type, selection_metric)

@@ -63,8 +63,7 @@ class FixedBuffer(ExemplarsBuffer):
 class EpochCheckpointing(SupervisedPlugin):
     def __init__(self, strategy, fname):
         """ 
-        Replay plugin that allows you to specify the batch split to be used during replay, 
-        ie. the number of samples to be used from the experience and from the buffer in each batch. 
+        Plugin that allows you to checkpoint the model after each epoch. 
         """
         super().__init__()
         self.strategy = strategy
@@ -75,3 +74,18 @@ class EpochCheckpointing(SupervisedPlugin):
         We checkpoint after each epoch.
         """
         save_checkpoint(self.strategy, self.fname)
+
+class EpochTesting(SupervisedPlugin):
+    def __init__(self, test_stream):
+        """ 
+        Plugin that allows you to test the model after each epoch. 
+        """
+        super().__init__()
+        self.test_stream = test_stream
+
+    def after_training_epoch(self, strategy: "BaseStrategy", **kwargs):
+        """ 
+        We test after each epoch.
+        """
+        print("Testing after epoch")
+        strategy.eval(self.test_stream)

@@ -96,7 +96,7 @@ class ResNet18(SimCLRModel):
             nn.ReLU(),
             nn.Linear(512, 128),
         )
-        classifier = resnet18.model.fc
+        classifier = nn.Linear(3072, num_classes)
         super().__init__(feature_extractor, projection, classifier)
 
 class ResNet50(SimCLRModel):
@@ -123,5 +123,5 @@ class ResNet50(SimCLRModel):
             nn.ReLU(),
             nn.Linear(512, 128),
         )
-        classifier = resnet50.model.fc
+        classifier = nn.Linear(2048, num_classes)
         super().__init__(feature_extractor, projection, classifier)

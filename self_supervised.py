@@ -157,15 +157,4 @@ class SimCLR(SupervisedTemplate):
         Augment images for current mini-batch.
         """
         super()._before_forward(**kwargs)
-        mb_x_augmented_1 = self.augmentations(self.mbatch[0])
-        mb_x_augmented_2 = self.augmentations(self.mbatch[0])
-        # We interleave augmented images
-        mb_x_augmented = torch.cat([mb_x_augmented_1, mb_x_augmented_2], dim=0)
-        n = mb_x_augmented_1.shape[0]
-        indices = [[i, n+i] for i in range(n)]
-        indices = [item for sublist in indices for item in sublist]
-        mb_x_augmented_sorted = torch.zeros_like(mb_x_augmented)
-        for i, ind in enumerate(indices):
-            mb_x_augmented_sorted[i] = mb_x_augmented[ind]
-        self.mbatch[0] = mb_x_augmented
-        # TODO: make this more efficient
+        self.mbatch[0] = self.augmentations(self.mbatch[0])
