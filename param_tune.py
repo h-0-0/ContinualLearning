@@ -85,7 +85,7 @@ def ssl_run_config(config):
     device = get_device()
 
     # GET DATA
-    ssl_scenario = data.get_data(data_name, n_tasks=1)
+    ssl_scenario = data.get_data(data_name, n_tasks=1, no_augmentation=True) # We turn off augmentations as we will be doing them as part of SSL
     class_scenario = data.get_data("CIFAR10", n_tasks=1)
 
     # CREATE MODEL
@@ -235,7 +235,7 @@ def ssl_tune_hyperparams(data_name, model_name, optimizer_type, selection_metric
             - final_test_accuracy
     """
     # Search space
-    lrs = [0.0001, 0.0005, 0.001, 0.005, 0.01, 0.05, 0.1, 0.5]
+    lrs = [0.01, 0.05, 0.1, 0.5]
     temps = [0.05, 0.1, 0.5, 1]
     # Get names
     exp_name = "ssl_" + data_name + "_" + model_name + "_" + optimizer_type

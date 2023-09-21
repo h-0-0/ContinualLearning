@@ -119,9 +119,9 @@ class ResNet50(SimCLRModel):
             nn.Flatten()
         )
         projection = nn.Sequential(
-            nn.Linear(2048, 512),
+            nn.Linear(3072, 512),
             nn.ReLU(),
             nn.Linear(512, 128),
         )
-        classifier = nn.Linear(2048, num_classes)
+        classifier = nn.Linear(3072, num_classes)
         super().__init__(feature_extractor, projection, classifier)

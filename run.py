@@ -148,7 +148,7 @@ def ssl(data_name, data2_name, model_name, ssl_batch_size, class_batch_size, lea
     device = get_device(device)
 
     # GET DATA
-    ssl_scenario = data.get_data(data_name, n_tasks=n_tasks, seed=seed) 
+    ssl_scenario = data.get_data(data_name, n_tasks=n_tasks, seed=seed, no_augmentation=True) # We turn off augmentations as we will be doing them as part of SSL
     class_scenario = data.get_data(data2_name, seed=seed)
 
     # CREATE MODEL
