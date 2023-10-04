@@ -136,7 +136,7 @@ def get_data(name, name2, n_tasks=5, strategy={"name":"stratify", "percentage":0
                     train_transform = train_aug,
                     eval_transform = no_aug_cifar10_transform
                 )
-                data2 = make_classification_dataset(data2, task_labels=2, transform = train_aug)
+                data2 = make_classification_dataset(data2, task_labels=-1, transform = train_aug)
                 return (scenario, data2)
             else:
                 raise Exception("Not given valid dataset split method currently only support: stratify")

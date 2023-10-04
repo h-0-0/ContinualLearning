@@ -82,7 +82,7 @@ class ResNet18(SimCLRModel):
     Uses the same classifier as the ResNet18 in model.py, which is a linear layer.
     """
 
-    def __init__(self, num_classes: int, input_channels: int = 3, classifier_type = None):
+    def __init__(self, num_classes: int, input_channels: int = 3):
         """
         :param num_classes: number of classes in the dataset
         """
@@ -125,3 +125,13 @@ class ResNet50(SimCLRModel):
         )
         classifier = nn.Linear(3072, num_classes)
         super().__init__(feature_extractor, projection, classifier)
+
+# Main function that instantiates all models and prints their architectures
+# to facilitate a quick view of avaliable models
+if __name__ == "__main__":
+    print("VGG16 with 10 classes")
+    print(VGG16(10))
+    print("ResNet18 with 10 classes")
+    print(ResNet18(10))
+    print("ResNet50 with 10 classes")
+    print(ResNet50(10))

@@ -11,6 +11,7 @@ from avalanche.training.determinism.rng_manager import RNGManager
 from avalanche.training.checkpoint import maybe_load_checkpoint, save_checkpoint
 import os
 import SimCLR_models as simclr
+import Orthus_models as orthus
 from custom_plugins import EpochCheckpointing, EpochTesting
 import torchvision.transforms as transforms
 import torch
@@ -33,6 +34,12 @@ def get_model(model_name, device, num_classes):
         model = simclr.ResNet18(num_classes)
     elif model_name ==  "SimCLR_ResNet50":
         model = simclr.ResNet50(num_classes)
+    elif model_name ==  "Orthus_VGG16":
+        model = orthus.VGG16(num_classes)
+    elif model_name ==  "Orthus_ResNet18":
+        model = orthus.ResNet18(num_classes)
+    elif model_name ==  "Orthus_ResNet50":
+        model = orthus.ResNet50(num_classes)
     else:
         raise ValueError("Model not supported")
     model.to(device)

@@ -14,6 +14,7 @@ import data as data
 from param_tune import tune_hyperparams, ssl_tune_hyperparams
 from utils import set_seed, get_eval_plugin, ssl_get_eval_plugin, get_optimizer, get_device, get_model, train, get_augmentations, done_train_ssl
 import self_supervised as ss
+from orthus import Orthus
 
 def regular(data_name, model_name, batch_size, learning_rate, epochs, n_tasks, device, optimizer_type, seed, early_stopping):
     # SET THE SEED 
@@ -73,7 +74,12 @@ def fixed_replay_stratify(data_name, model_name, batch_size, learning_rate, epoc
 
     # PERFORM/LOAD HYPERPARAMETER TUNING
     if learning_rate is None:
-        learning_rate = tune_hyperparams(data_name, model_name, optimizer_type, selection_metric="final_train_accuracy")
+        # Get rid of Orthus_ prefix if it exists (Tuning for one headed version should be same for multi headed version) 
+        if model_name[:7] == "Orthus_":
+            m_name = model_name[8:]
+        else:
+            m_name = model_name
+        learning_rate = tune_hyperparams(data_name, m_name, optimizer_type, selection_metric="final_train_accuracy")
 
     # CREATE NAME FOR LOGGING, CHECKPOINTING, ETC
     name = data_name + "_" + str(n_tasks) + "_tasks" + "/" + model_name + "/" + optimizer_type +  "/fixed_replay_stratify/percent_" + str(percentage) + "_ratio_" + str(batch_ratio) + "_lr_" + str(learning_rate)
@@ -93,7 +99,7 @@ def fixed_replay_stratify(data_name, model_name, batch_size, learning_rate, epoc
     optimizer = get_optimizer(optimizer_type, model, learning_rate)
 
     # DEFINE THE EVALUATION PLUGIN and LOGGERS
-    eval_plugin = get_eval_plugin(name, track_classes={0: [0,1,2,3,4,5,6,7,8,9], 2: [0,1,2,3,4,5,6,7,8,9]}) #TODO: make this automatic for dataset
+    eval_plugin = get_eval_plugin(name, track_classes={0: [0,1,2,3,4,5,6,7,8,9], -1: [0,1,2,3,4,5,6,7,8,9]}) #TODO: make this automatic for dataset
 
     # SETUP OTHER PLUGINS
     # Construct batch sizes for benchmark and replay
@@ -114,13 +120,25 @@ def fixed_replay_stratify(data_name, model_name, batch_size, learning_rate, epoc
 
     # CREATE THE STRATEGY INSTANCE
     # Construct the strategy
-    cl_strategy = SupervisedTemplate(
-        model, optimizer,
-        CrossEntropyLoss(), train_mb_size=batch_size, train_epochs=epochs, eval_mb_size=batch_size,
-        evaluator=eval_plugin,
-        device = device,
-        plugins=plugins
-    )
+    if model_name[:7] == "Orthus_":
+        cl_strategy = Orthus(
+            model, optimizer,
+            criterion_proj = CrossEntropyLoss(),
+            criterion_class = CrossEntropyLoss(),
+            train_mb_size=batch_size, train_epochs=epochs, eval_mb_size=batch_size,
+            evaluator=eval_plugin,
+            device = device,
+            plugins=plugins
+        )
+    else:
+        cl_strategy = SupervisedTemplate(
+            model, optimizer,
+            CrossEntropyLoss(), 
+            train_mb_size=batch_size, train_epochs=epochs, eval_mb_size=batch_size,
+            evaluator=eval_plugin,
+            device = device,
+            plugins=plugins
+        )
 
     # TRAINING LOOP
     train(scenario, cl_strategy, name, device)
