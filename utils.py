@@ -14,6 +14,7 @@ import SimCLR_models as simclr
 from custom_plugins import EpochCheckpointing, EpochTesting
 import torchvision.transforms as transforms
 import torch
+from slune.slune import get_csv_slog
 
 def set_seed(seed):
     """Sets the seed for Python's `random`, NumPy, and PyTorch global generators"""
@@ -200,3 +201,18 @@ def done_train_ssl(model, optimizer):
         optimizer = torch.optim.SGD(model.parameters(), lr=optimizer.lr, momentum=0.9)
     if (type (optimizer).__name__ == 'Adam'):
         optimizer = torch.optim.Adam(model.parameters(), lr=optimizer.lr)
+
+def tune_hyperparams(tune_type, data_name, model_name, optimizer_type, selection_metric='final_train_accuracy'):
+    if selection_metric != 'final_train_accuracy':
+        raise ValueError("Only final_train_accuracy is supported for hyperparameter tuning currently")
+    slog = get_csv_slog()
+    params = ['--tune_type='+tune_type, '--data_name='+data_name, '--model_name='+model_name, '--optimizer_type='+optimizer_type]
+    params, value = slog.read(params, metric_name = selection_metric, min_max ='max')
+    if tune_type == 'classification':
+        lr = float([p for p in params if 'learning_rate' in p][0].split('=')[1])
+        params = lr
+    elif tune_type == 'ssl':
+        lr = float([p for p in params if 'learning_rate' in p][0].split('=')[1])
+        temperature = float([p for p in params if 'temperature' in p][0].split('=')[1])
+        params = [lr, temperature]
+    return params

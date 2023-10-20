@@ -11,8 +11,7 @@ from avalanche.training.storage_policy import ReservoirSamplingBuffer
 
 from custom_plugins import BatchSplitReplay, FixedBuffer
 import data as data
-from param_tune import tune_hyperparams, ssl_tune_hyperparams
-from utils import set_seed, get_eval_plugin, ssl_get_eval_plugin, get_optimizer, get_device, get_model, train, get_augmentations, done_train_ssl
+from utils import set_seed, get_eval_plugin, ssl_get_eval_plugin, get_optimizer, get_device, get_model, train, get_augmentations, done_train_ssl, tune_hyperparams
 import self_supervised as ss
 
 def regular(data_name, model_name, batch_size, learning_rate, epochs, n_tasks, device, optimizer_type, seed, early_stopping):
@@ -21,7 +20,7 @@ def regular(data_name, model_name, batch_size, learning_rate, epochs, n_tasks, d
 
     # PERFORM/LOAD HYPERPARAMETER TUNING
     if learning_rate is None:
-        learning_rate = tune_hyperparams(data_name, model_name, optimizer_type, selection_metric="final_train_accuracy")
+        learning_rate = tune_hyperparams('classification', data_name, model_name, optimizer_type, selection_metric="final_train_accuracy")
 
     # HANDLE DEVICE
     device = get_device(device)
@@ -73,7 +72,7 @@ def fixed_replay_stratify(data_name, model_name, batch_size, learning_rate, epoc
 
     # PERFORM/LOAD HYPERPARAMETER TUNING
     if learning_rate is None:
-        learning_rate = tune_hyperparams(data_name, model_name, optimizer_type, selection_metric="final_train_accuracy")
+        learning_rate = tune_hyperparams('classification', data_name, model_name, optimizer_type, selection_metric="final_train_accuracy")
 
     # CREATE NAME FOR LOGGING, CHECKPOINTING, ETC
     name = data_name + "_" + str(n_tasks) + "_tasks" + "/" + model_name + "/" + optimizer_type +  "/fixed_replay_stratify/percent_" + str(percentage) + "_ratio_" + str(batch_ratio) + "_lr_" + str(learning_rate)
@@ -131,7 +130,7 @@ def ssl(data_name, data2_name, model_name, ssl_batch_size, class_batch_size, lea
 
     # PERFORM/LOAD HYPERPARAMETER TUNING
     if learning_rate is None or temperature is None:
-        tune_learning_rate, tune_temperature = ssl_tune_hyperparams(data_name, model_name, optimizer_type, selection_metric="final_train_accuracy")
+        tune_learning_rate, tune_temperature = tune_hyperparams('ssl', data_name, model_name, optimizer_type, selection_metric="final_train_accuracy")
         if learning_rate is None:
             learning_rate = tune_learning_rate
         if temperature is None:
@@ -203,9 +202,6 @@ def ssl(data_name, data2_name, model_name, ssl_batch_size, class_batch_size, lea
     )
     # train
     train(class_scenario, class_strategy, name, device)  
-
-# TODO: check ssl tuning is working correctly, check tensor logs etc.
-# TODO: Buffer for ssl
 
 # TODO: set the scipy RNG in set_seed so can remove the need for passing seed to get_data
 # TODO: if you run experiment from checkpoint does logging continue from where it left off?

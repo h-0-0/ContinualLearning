@@ -165,7 +165,7 @@ def tune_hyperparams(data_name, model_name, optimizer_type, selection_metric="fi
             - final_test_accuracy
     """
     # Search space
-    lrs = [0.00001, 0.00005, 0.0001, 0.0005, 0.001, 0.005, 0.01, 0.05, 0.1, 0.5]
+    lrs = [0.0001, 0.0005, 0.001, 0.005, 0.01, 0.05, 0.1, 0.5]
     # Get names
     exp_name = data_name + "_" + model_name + "_" + optimizer_type
     storage_path = "/user/work/jd18380/ContinualLearning/tuning"
