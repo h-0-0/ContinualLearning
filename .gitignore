@@ -167,3 +167,4 @@ slurm*
 /checkpoints
 /tuning
 /.venv
+/slune_results
