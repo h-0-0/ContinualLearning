@@ -9,12 +9,13 @@ from avalanche.training.plugins.lr_scheduling import LRSchedulerPlugin
 from avalanche.training.plugins import ReplayPlugin
 from avalanche.training.storage_policy import ReservoirSamplingBuffer
 
-from custom_plugins import BatchSplitReplay, FixedBuffer
+from custom_plugins import BatchSplitReplay, FixedBuffer, TaskExpLrDecay
 import data as data
-from utils import set_seed, get_eval_plugin, ssl_get_eval_plugin, get_optimizer, get_device, get_model, train, get_augmentations, done_train_ssl, tune_hyperparams
+from utils import set_seed, get_eval_plugin, ssl_get_eval_plugin, get_optimizer, get_device, get_model, get_augmentations
+from train_utils import train, tune_hyperparams, done_train_ssl
 import self_supervised as ss
 
-def regular(data_name, model_name, batch_size, learning_rate, epochs, n_tasks, device, optimizer_type, seed, early_stopping):
+def regular(data_name, model_name, batch_size, learning_rate, epochs, n_tasks, device, optimizer_type, seed, exp_lr_decay_gamma):
     # SET THE SEED 
     set_seed(seed)
 
@@ -26,7 +27,7 @@ def regular(data_name, model_name, batch_size, learning_rate, epochs, n_tasks, d
     device = get_device(device)
 
     # CREATE NAME FOR LOGGING, CHECKPOINTING, ETC
-    name = data_name + "_" + str(n_tasks) + "_tasks" + "/" + model_name + "/" + optimizer_type +  "/regular/lr_" + str(learning_rate)
+    name = data_name + "_" + str(n_tasks) + "_tasks" + "/" + model_name + "/" + optimizer_type + '/' + 'epochs_' + str(epochs) +  "/regular/lr_" + str(learning_rate)
     print("Experiment name: " ,name)
 
     # GET DATA
@@ -42,16 +43,8 @@ def regular(data_name, model_name, batch_size, learning_rate, epochs, n_tasks, d
     # DEFINE THE EVALUATION PLUGIN and LOGGERS
     eval_plugin = get_eval_plugin(name, track_classes=[j for i in scenario.original_classes_in_exp for j in i])
 
-    # SETUP OTHER PLUGINS
-    if early_stopping > 0:
-        plugins = [
-            EarlyStoppingPlugin(early_stopping, "train_stream"),
-            LRSchedulerPlugin(lr_scheduler.CosineAnnealingLR(optimizer, T_max=epochs))
-        ]
-    else:
-        plugins = [
-            LRSchedulerPlugin(lr_scheduler.CosineAnnealingLR(optimizer, T_max=epochs))
-        ]
+    # DEFINE PLUGINS 
+    plugins = [TaskExpLrDecay(gamma=exp_lr_decay_gamma)]
 
     # CREATE THE STRATEGY INSTANCE (NAIVE)
     cl_strategy = Naive(
@@ -66,7 +59,7 @@ def regular(data_name, model_name, batch_size, learning_rate, epochs, n_tasks, d
     # TRAINING LOOP
     train(scenario, cl_strategy, name, device)
 
-def fixed_replay_stratify(data_name, model_name, batch_size, learning_rate, epochs, n_tasks, device, optimizer_type, seed, early_stopping, data2_name, batch_ratio, percentage):
+def fixed_replay_stratify(data_name, model_name, batch_size, learning_rate, epochs, n_tasks, device, optimizer_type, seed, data2_name, batch_ratio, percentage, exp_lr_decay_gamma):
     # SET THE SEED 
     set_seed(seed)
 
@@ -75,7 +68,7 @@ def fixed_replay_stratify(data_name, model_name, batch_size, learning_rate, epoc
         learning_rate = tune_hyperparams('classification', data_name, model_name, optimizer_type, selection_metric="final_train_accuracy")
 
     # CREATE NAME FOR LOGGING, CHECKPOINTING, ETC
-    name = data_name + "_" + str(n_tasks) + "_tasks" + "/" + model_name + "/" + optimizer_type +  "/fixed_replay_stratify/percent_" + str(percentage) + "_ratio_" + str(batch_ratio) + "_lr_" + str(learning_rate)
+    name = data_name + "_" + str(n_tasks) + "_tasks" + "/" + model_name + "/" + optimizer_type + '/' + 'epochs_' + str(epochs) +  "/fixed_replay_stratify/percent_" + str(percentage) + "_ratio_" + str(batch_ratio) + "_lr_" + str(learning_rate)
     print("Experiment name: " ,name)
 
     # HANDLE DEVICE
@@ -99,17 +92,10 @@ def fixed_replay_stratify(data_name, model_name, batch_size, learning_rate, epoc
     bs_bench = int(batch_size*batch_ratio)
     bs_replay = batch_size - bs_bench
     # Construct the plugins
-    if early_stopping > 0:
-        plugins =[
-            BatchSplitReplay(FixedBuffer, buffer_data, max_size=len(buffer_data), bs1=bs_bench, bs2=bs_replay),
-            LRSchedulerPlugin(lr_scheduler.CosineAnnealingLR(optimizer, T_max=epochs)),
-            EarlyStoppingPlugin(early_stopping, "train_stream")
-        ]
-    else:
-        plugins = [
-            BatchSplitReplay(FixedBuffer, buffer_data, max_size=len(buffer_data), bs1=bs_bench, bs2=bs_replay),
-            LRSchedulerPlugin(lr_scheduler.CosineAnnealingLR(optimizer, T_max=epochs))
-        ]
+    plugins = [
+        BatchSplitReplay(FixedBuffer, buffer_data, max_size=len(buffer_data), bs1=bs_bench, bs2=bs_replay),
+        TaskExpLrDecay(gamma=exp_lr_decay_gamma)
+    ]
 
     # CREATE THE STRATEGY INSTANCE
     # Construct the strategy
@@ -124,7 +110,7 @@ def fixed_replay_stratify(data_name, model_name, batch_size, learning_rate, epoc
     # TRAINING LOOP
     train(scenario, cl_strategy, name, device)
 
-def ssl(data_name, data2_name, model_name, ssl_batch_size, class_batch_size, learning_rate, ssl_epochs, class_epochs, n_tasks, device, optimizer_type, seed, early_stopping, temperature, replay):
+def ssl(data_name, data2_name, model_name, ssl_batch_size, class_batch_size, learning_rate, ssl_epochs, class_epochs, n_tasks, device, optimizer_type, seed, temperature, replay, exp_lr_decay_gamma):
     # SET THE SEED 
     set_seed(seed)
 
@@ -159,10 +145,8 @@ def ssl(data_name, data2_name, model_name, ssl_batch_size, class_batch_size, lea
 
     # SETUP OTHER PLUGINS
     # Construct the plugins
-    plugins = [LRSchedulerPlugin(lr_scheduler.CosineAnnealingLR(optimizer, T_max=ssl_epochs))]
-    if early_stopping > 0:
-        plugins.append(EarlyStoppingPlugin(early_stopping, "train_stream"))
-    elif replay > 0:
+    plugins = [TaskExpLrDecay(gamma=exp_lr_decay_gamma)]
+    if replay > 0:
         storage_policy = ReservoirSamplingBuffer(max_size=replay)
         replay_plugin = ReplayPlugin(
             mem_size=replay, storage_policy=storage_policy
@@ -198,10 +182,11 @@ def ssl(data_name, data2_name, model_name, ssl_batch_size, class_batch_size, lea
         train_mb_size = class_batch_size, eval_mb_size = class_batch_size,
         evaluator = eval_plugin,
         device = device,
-        plugins = [LRSchedulerPlugin(lr_scheduler.CosineAnnealingLR(optimizer, T_max=class_epochs))]
+        # plugins = []
     )
     # train
     train(class_scenario, class_strategy, name, device)  
 
 # TODO: set the scipy RNG in set_seed so can remove the need for passing seed to get_data
 # TODO: if you run experiment from checkpoint does logging continue from where it left off?
+# TODO: use slune to handle naming and saving of experiments

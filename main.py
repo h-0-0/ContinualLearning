@@ -17,9 +17,11 @@ def main(args):
             device = args.device, 
             optimizer_type = args.optimizer_type, 
             seed = args.seed,
-            early_stopping = args.early_stopping
+            exp_lr_decay_gamma = args.exp_lr_decay_gamma,
         )
     elif args.strategy == "fixed_replay_stratify":
+        if args.data_name != "SplitCIFAR10":
+            raise ValueError("Only SplitCIFAR10 is supported for regular strategy")
         run.fixed_replay_stratify(
             data_name = args.data_name, 
             model_name = args.model_name, 
@@ -30,12 +32,14 @@ def main(args):
             device = args.device, 
             optimizer_type = args.optimizer_type, 
             seed = args.seed,
-            early_stopping = args.early_stopping,
             data2_name = args.data2_name, 
             batch_ratio = args.batch_ratio, 
-            percentage = args.percentage
+            percentage = args.percentage,
+            exp_lr_decay_gamma = args.exp_lr_decay_gamma,
         )
     elif args.strategy == "ssl":
+        if args.data_name != "SplitCIFAR10":
+            raise ValueError("Only SplitCIFAR10 is supported for regular strategy")
         run.ssl(
             data_name = args.data_name, 
             data2_name = args.data2_name,
@@ -49,9 +53,9 @@ def main(args):
             device = args.device, 
             optimizer_type = args.optimizer_type, 
             seed = args.seed,
-            early_stopping = args.early_stopping,
             temperature=args.temperature,
-            replay=args.replay
+            replay=args.replay,
+            exp_lr_decay_gamma = args.exp_lr_decay_gamma,
         )
     
 
@@ -62,13 +66,13 @@ if __name__ == "__main__":
     # Arguments related to experiment
     parser.add_argument("--data_name", type=str, help="Name of dataset to use, default: 'SplitCIFAR10'", default="SplitCIFAR10")
     parser.add_argument("--model_name", type=str, help="Name of model to use, default: 'VGG16'", default="VGG16")
-    parser.add_argument("--batch_size", type=int, help="Batch size, default: 256", default=256)
+    parser.add_argument("--batch_size", type=int, help="Batch size, default: 10", default=10)
     parser.add_argument("--learning_rate", type=float, help="Learning rate if set will not perform tuning and will use the given learning rate, default: None", default=None)
     parser.add_argument("--epochs", type=int, help="Maximum number of epochs, default: 1", default=1)
-    parser.add_argument("--early_stopping", type=int, help="Number of epochs to wait before stopping (ie. the patience), if set to 0 then will turn off early stopping, default: 0", default=0)
 
     # Arguments related to CL
     parser.add_argument("--n_tasks", type=int, help="Number of tasks, default: 5", default=5)
+    parser.add_argument("--exp_lr_decay_gamma", type=float, help="Exponential learning rate decay factor, default: 0.8, use 1.0 for no decay", default=0.8)
 
     # Arguments for if we are using a second dataset
     parser.add_argument("--data2_name", type=str, help="Name of second dataset to use, default: None", default=None)

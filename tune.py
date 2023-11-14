@@ -2,13 +2,15 @@ from slune.slune import sbatchit, get_csv_slog, garg, lsargs
 from slune.searchers import SearcherGrid
 
 
-from utils import get_device, get_model, get_optimizer, get_eval_plugin, ssl_get_eval_plugin, get_augmentations, done_train_ssl
+from utils import get_device, get_model, get_optimizer, get_eval_plugin, ssl_get_eval_plugin, get_augmentations
+from train_utils import done_train_ssl
 import data
 from avalanche.training.supervised.strategy_wrappers import Naive
 from torch.nn import CrossEntropyLoss
 import self_supervised as ss
 from torch.optim import lr_scheduler
 from avalanche.training.plugins.lr_scheduling import LRSchedulerPlugin
+from custom_plugins import EpochTesting
 
 def classification(params):
     """
@@ -46,11 +48,14 @@ def classification(params):
     # CREATE THE STRATEGY INSTANCE (NAIVE)
     cl_strategy = Naive(
         model, optimizer,
-        criterion = CrossEntropyLoss(), train_epochs=200,
-        train_mb_size = 256, eval_mb_size = 256,
+        criterion = CrossEntropyLoss(), train_epochs=300,
+        train_mb_size = 128, eval_mb_size = 128,
         device = device,
         evaluator = eval_plugin,
-        plugins = [LRSchedulerPlugin(lr_scheduler.CosineAnnealingLR(optimizer, T_max=200))] 
+        plugins = [
+            # LRSchedulerPlugin(lr_scheduler.CosineAnnealingLR(optimizer, T_max=200)),
+            EpochTesting(scenario.test_stream)
+            ] 
     )
 
     # TRAINING LOOP
@@ -115,7 +120,10 @@ def ssl(params):
         train_mb_size = 512, eval_mb_size = 512,
         device = device,
         evaluator = eval_plugin,
-        plugins = [LRSchedulerPlugin(lr_scheduler.CosineAnnealingLR(optimizer, T_max=100))]
+        plugins = [
+            # LRSchedulerPlugin(lr_scheduler.CosineAnnealingLR(optimizer, T_max=100)),
+            EpochTesting(ssl_scenario.test_stream)
+        ]
     )
 
     # TRAINING LOOP
@@ -136,7 +144,11 @@ def ssl(params):
         criterion = CrossEntropyLoss(), train_epochs = 100,
         train_mb_size = 256, eval_mb_size = 256,
         evaluator = eval_plugin,
-        device = device
+        device = device,
+        plugins = [
+            # LRSchedulerPlugin(lr_scheduler.CosineAnnealingLR(optimizer, T_max=100)),
+            EpochTesting(class_scenario.test_stream)
+        ]
     )
     for experience in class_scenario.train_stream:
         # we train the model on the current experience
@@ -159,11 +171,19 @@ if __name__ == "__main__":
     print("Arguments received to tune.py: ", args)
     if args[0] == "--tune_type=classification":
         # If no further args given we submit a grid search over learning rate to SLURM using slune package
-        if len(args) == 1:
+        if len(args) == 2:
+            if args[1].split("=")[0] != "--opt":
+                raise ValueError("Invalid argument, second argument must be --opt=OPTIMIZER_TYPE")
+            opt = args[1].split("=")[1]
+            if opt in ["SGD", "SGD_momentum"]:
+                lrs = [5, 2.5, 1.0, 0.75, 0.5, 0.1, 0.05, 0.01, 0.005, 0.001]
+            elif opt == "Adam":
+                lrs = [0.05, 0.01, 0.005, 0.001, 0.0005, 0.0001, 5e-5, 1e-5, 5e-6, 1e-6, 5e-7, 1e-7]
             search = SearcherGrid({
-                "model_name": ["VGG16","ResNet18", "ResNet50"],
-                "learning_rate": [0.5, 0.5, 0.1, 0.05, 0.01, 0.005, 0.001, 0.0005, 0.0001]
+                "model_name": ["VGG16","resnet18", "resnet50"],
+                "learning_rate": lrs
             })
+            slog = get_csv_slog(params = None)
             sbatchit(
                 "tune.py", 
                 "gpu_template.sh", 
@@ -171,8 +191,9 @@ if __name__ == "__main__":
                 cargs=[
                     "--tune_type=classification", 
                     "--data_name=CIFAR10", 
-                    "--optimizer_type=SGD"
-                ]
+                    "--optimizer_type=" + opt,
+                ],
+                slog = slog
             )
         else:
             # For debugging
@@ -181,10 +202,11 @@ if __name__ == "__main__":
         # If no further args given we submit a grid search over learning rate to SLURM using slune package
         if len(args) == 1:
             search = SearcherGrid({
-                "model_name": ["VGG16","ResNet18", "ResNet50"],
+                "model_name": ["VGG16","resnet18", "resnet50"],
                 "learning_rate": [0.1, 0.01, 0.001],
                 "temperature": [0.01, 0.1, 0.5, 1, 5, 10, 50, 100]
             })
+            slog = get_csv_slog(params = None)
             sbatchit(
                 "tune.py", 
                 "gpu_template.sh", 
@@ -193,7 +215,8 @@ if __name__ == "__main__":
                     "--tune_type=ssl", 
                     "--data_name=CIFAR10",
                     "--optimizer_type=SGD"
-                ]
+                ],
+                slog = slog
             )
         else:
             # For debugging
@@ -201,3 +224,5 @@ if __name__ == "__main__":
     else:
         raise ValueError("Invalid tune type, please use 'classification' or 'ssl'")
     print("Finished tune with args: ", args)
+
+# TODO: Some of the cargs aren't cargs (eg. optimizer type), these should be fed from run? or something
