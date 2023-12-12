@@ -26,7 +26,7 @@ def train(scenario, cl_strategy, name, device):
     if not os.path.exists(directory):
         os.makedirs(directory)
     # we add epoch checkpointing plugin to the strategy
-    cl_strategy.plugins = cl_strategy.plugins + [EpochCheckpointing(cl_strategy, fname), EpochTesting(scenario.test_stream)] #TODO: could I do this in the constructor?
+    cl_strategy.plugins = cl_strategy.plugins + [EpochTesting(scenario.test_stream)] #TODO: could I do this in the constructor?
     print('Starting training...')
     # for experience in scenario.train_stream:
     for experience in scenario.train_stream[initial_exp:]:

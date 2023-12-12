@@ -18,8 +18,9 @@ def reg_batch():
 
 def reg_cl():
     search = SearcherGrid({
-        "model_name": ["VGG16","resnet18", "resnet50"],
-        "epochs": [1, 5, 10, 50]
+        "model_name": ["VGG16", "resnet18", "resnet50"],
+        "batch_size": [5, 10, 16, 32, 64, 128, 256, 512],
+        "mask": [True, None],
     })
     sbatchit(
         "main.py", 
@@ -28,6 +29,7 @@ def reg_cl():
         cargs=[
             "--optimizer_type=SGD",
             "--n_tasks=5",
+            "--epochs=15",
         ]
     )
 
@@ -77,7 +79,7 @@ if __name__ == "__main__":
     python_path, args = lsargs()
     if args[0] == "reg_batch":
         reg_batch()
-    elif args[0] == "reg":
+    elif args[0] == "reg_cl":
         reg_cl()
     elif args[0] == "strat":
         strat()

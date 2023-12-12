@@ -5,6 +5,7 @@ from typing import Any
 from torch import arange
 from avalanche.training.checkpoint import save_checkpoint
 from utils import get_optimizer
+from avalanche.training.templates import SupervisedTemplate
 
 class BatchSplitReplay(SupervisedPlugin):
     def __init__(self, storage_policy, buffer_data, max_size, bs1, bs2):
@@ -98,6 +99,7 @@ class TaskExpLrDecay(SupervisedPlugin):
         super().__init__()
         self.gamma = gamma
         self.exp_num = 1
+        self.reset_optimizer = reset_optimizer
 
     def after_training_exp(self, strategy: "BaseStrategy", **kwargs):
         """ 
@@ -105,10 +107,16 @@ class TaskExpLrDecay(SupervisedPlugin):
         """
         self.exp_num += 1
         if self.reset_optimizer:
-            strategy.optimizer = get_optimizer(strategy.optimizer_type, strategy.model, strategy.optimizer.defaults['lr'])
-        if strategy.optimizer_type in ["SGD_momentum", "Adam"]:
+            strategy.optimizer = get_optimizer(strategy.optimizer.__class__.__name__, strategy.model, strategy.optimizer.defaults['lr'])
+        if strategy.optimizer.__class__.__name__ =="Adam":
             # We currently don't decay the learning rate for Adam or SGD with momentum
             pass
-        else:
-            for param_group in strategy.optimizer.param_groups:
-                lr = max(param_group['lr'] * self.gamma ** (self.exp_num), 0.00005)
+        elif strategy.optimizer.__class__.__name__ == "SGD":
+            if strategy.optimizer.defaults['momentum'] == 0:
+                for param_group in strategy.optimizer.param_groups:
+                    lr = max(param_group['lr'] * self.gamma ** (self.exp_num), 0.00005)
+            else:
+                # We don't decay the learning rate for SGD with momentum
+                pass
+        else: 
+            raise ValueError("Only SGD, SGD_momentum and Adam are supported for TaskExpLrDecay currently")

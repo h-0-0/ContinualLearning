@@ -1,16 +1,13 @@
-from slune.slune import sbatchit, get_csv_slog, garg, lsargs
+from slune import sbatchit, get_csv_slog, garg, lsargs
 from slune.searchers import SearcherGrid
-
-
 from utils import get_device, get_model, get_optimizer, get_eval_plugin, ssl_get_eval_plugin, get_augmentations
 from train_utils import done_train_ssl
 import data
 from avalanche.training.supervised.strategy_wrappers import Naive
 from torch.nn import CrossEntropyLoss
 import self_supervised as ss
-from torch.optim import lr_scheduler
-from avalanche.training.plugins.lr_scheduling import LRSchedulerPlugin
 from custom_plugins import EpochTesting
+import os
 
 def classification(params):
     """
@@ -24,10 +21,10 @@ def classification(params):
     data_name = garg(params, "data_name")
     model_name = garg(params, "model_name")
     optimizer_type = garg(params, "optimizer_type")
-
+    batch_size = int(garg(params, "batch_size"))
     learning_rate = float(garg(params, "learning_rate"))
 
-    name = slog.current_path
+    name, _ = os.path.split(slog.get_current_path())
 
     # HANDLE DEVICE
     device = get_device()
@@ -49,7 +46,7 @@ def classification(params):
     cl_strategy = Naive(
         model, optimizer,
         criterion = CrossEntropyLoss(), train_epochs=300,
-        train_mb_size = 128, eval_mb_size = 128,
+        train_mb_size = batch_size, eval_mb_size = batch_size,
         device = device,
         evaluator = eval_plugin,
         plugins = [
@@ -86,11 +83,11 @@ def ssl(params):
     data_name = garg(params, "data_name")
     model_name = garg(params, "model_name")
     optimizer_type = garg(params, "optimizer_type")
-
+    batch_size = int(garg(params, "batch_size"))
     learning_rate = float(garg(params, "learning_rate"))
     temperature = float(garg(params, "temperature"))
 
-    name = slog.current_path
+    name, _ = os.path.split(slog.get_current_path())
 
     # HANDLE DEVICE
     device = get_device()
@@ -117,7 +114,7 @@ def ssl(params):
         model, optimizer,
         augmentations=augs, temperature=temperature,
         train_epochs=100,
-        train_mb_size = 512, eval_mb_size = 512,
+        train_mb_size = batch_size, eval_mb_size = batch_size,
         device = device,
         evaluator = eval_plugin,
         plugins = [
@@ -137,12 +134,12 @@ def ssl(params):
     done_train_ssl(model, optimizer)
 
     # Perform classification to test ssl
-    name = name[:-4] + "_classification"
+    name = os.path.join(name, "classification")
     eval_plugin = get_eval_plugin(name, track_classes=[j for i in class_scenario.original_classes_in_exp for j in i])
     class_strategy = Naive(
         model, optimizer,
-        criterion = CrossEntropyLoss(), train_epochs = 100,
-        train_mb_size = 256, eval_mb_size = 256,
+        criterion = CrossEntropyLoss(), train_epochs = 50,
+        train_mb_size = 128, eval_mb_size = 128,
         evaluator = eval_plugin,
         device = device,
         plugins = [
@@ -176,13 +173,17 @@ if __name__ == "__main__":
                 raise ValueError("Invalid argument, second argument must be --opt=OPTIMIZER_TYPE")
             opt = args[1].split("=")[1]
             if opt in ["SGD", "SGD_momentum"]:
-                lrs = [5, 2.5, 1.0, 0.75, 0.5, 0.1, 0.05, 0.01, 0.005, 0.001]
+                lrs = [5, 2.5, 1.0, 0.75, 0.5, 0.1, 0.05, 0.01]
             elif opt == "Adam":
-                lrs = [0.05, 0.01, 0.005, 0.001, 0.0005, 0.0001, 5e-5, 1e-5, 5e-6, 1e-6, 5e-7, 1e-7]
-            search = SearcherGrid({
-                "model_name": ["VGG16","resnet18", "resnet50"],
-                "learning_rate": lrs
-            })
+                lrs = [0.5, 0.1, 0.05, 0.01, 0.005, 0.001, 0.0005, 0.0001, 5e-5, 1e-5]
+            search = SearcherGrid(
+                {
+                    "model_name": ["VGG16","resnet18", "resnet50"],
+                    "learning_rate": lrs,
+                    "batch_size": [10, 32, 64, 128, 256, 512],
+                },
+                runs=1,
+            )
             slog = get_csv_slog(params = None)
             sbatchit(
                 "tune.py", 
@@ -200,12 +201,24 @@ if __name__ == "__main__":
             classification(args)
     elif args[0] == "--tune_type=ssl":
         # If no further args given we submit a grid search over learning rate to SLURM using slune package
-        if len(args) == 1:
-            search = SearcherGrid({
-                "model_name": ["VGG16","resnet18", "resnet50"],
-                "learning_rate": [0.1, 0.01, 0.001],
-                "temperature": [0.01, 0.1, 0.5, 1, 5, 10, 50, 100]
-            })
+        if len(args) == 2:
+            if args[1].split("=")[0] != "--opt":
+                raise ValueError("Invalid argument, second argument must be --opt=OPTIMIZER_TYPE")
+            opt = args[1].split("=")[1]
+            if opt in ["SGD", "SGD_momentum"]:
+                lrs = [0.5, 0.1, 0.05, 0.01]
+            elif opt == "Adam":
+                lrs = [0.005, 0.001, 0.0005, 0.0001]
+
+            search = SearcherGrid(
+                {
+                    "model_name": ["VGG16","resnet18", "resnet50"],
+                    "learning_rate": lrs,
+                    "temperature": [0.001, 0.01, 0.1, 1, 5, 10],
+                    "batch_size": [64, 128, 256, 512, 1024],
+                },
+                runs=1,
+            )
             slog = get_csv_slog(params = None)
             sbatchit(
                 "tune.py", 
@@ -214,7 +227,7 @@ if __name__ == "__main__":
                 cargs=[
                     "--tune_type=ssl", 
                     "--data_name=CIFAR10",
-                    "--optimizer_type=SGD"
+                    "--optimizer_type=" + opt,
                 ],
                 slog = slog
             )

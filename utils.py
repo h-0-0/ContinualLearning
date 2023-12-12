@@ -164,3 +164,12 @@ def get_augmentations(scenario):
         color_distort_lambda           # Apply color distortion
     ]) 
     return augmentations
+
+def format_arguments(**kwargs):
+    formatted_args = []
+
+    for name, value in kwargs.items():
+        formatted_arg = f"--{name}={value}"
+        formatted_args.append(formatted_arg)
+
+    return formatted_args

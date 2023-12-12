@@ -8,54 +8,60 @@ def main(args):
         if args.data_name != "SplitCIFAR10":
             raise ValueError("Only SplitCIFAR10 is supported for regular strategy")
         run.regular(
-            data_name = args.data_name, 
-            model_name = args.model_name, 
-            batch_size = args.batch_size,
-            learning_rate = args.learning_rate, 
-            epochs = args.epochs,
+            experiment = "regular",
+            device = args.device,
+            data_name = args.data_name,
             n_tasks = args.n_tasks,
-            device = args.device, 
             optimizer_type = args.optimizer_type, 
-            seed = args.seed,
             exp_lr_decay_gamma = args.exp_lr_decay_gamma,
+            epochs = args.epochs,
+            batch_size = args.batch_size,
+            model_name = args.model_name, 
+            mask = args.mask,
+            learning_rate = args.learning_rate, 
+            seed = args.seed,
         )
     elif args.strategy == "fixed_replay_stratify":
         if args.data_name != "SplitCIFAR10":
             raise ValueError("Only SplitCIFAR10 is supported for regular strategy")
         run.fixed_replay_stratify(
-            data_name = args.data_name, 
-            model_name = args.model_name, 
-            batch_size = args.batch_size,
-            learning_rate = args.learning_rate, 
-            epochs = args.epochs,
+            experiment = "fixed_replay_stratify",
+            device = args.device,
+            data_name = args.data_name,
+            data2_name = args.data2_name,
             n_tasks = args.n_tasks,
-            device = args.device, 
             optimizer_type = args.optimizer_type, 
-            seed = args.seed,
-            data2_name = args.data2_name, 
+            exp_lr_decay_gamma = args.exp_lr_decay_gamma,
+            epochs = args.epochs,
+            batch_size = args.batch_size,
             batch_ratio = args.batch_ratio, 
             percentage = args.percentage,
-            exp_lr_decay_gamma = args.exp_lr_decay_gamma,
+            model_name = args.model_name, 
+            mask = args.mask,
+            learning_rate = args.learning_rate, 
+            seed = args.seed,
         )
     elif args.strategy == "ssl":
         if args.data_name != "SplitCIFAR10":
             raise ValueError("Only SplitCIFAR10 is supported for regular strategy")
         run.ssl(
-            data_name = args.data_name, 
+            experiment = "ssl",
+            device = args.device,
+            data_name = args.data_name,
             data2_name = args.data2_name,
-            model_name = args.model_name, 
-            ssl_batch_size = args.ssl_batch_size,
-            class_batch_size = args.class_batch_size,
-            learning_rate = args.learning_rate, 
+            n_tasks = args.n_tasks,
+            optimizer_type = args.optimizer_type, 
+            exp_lr_decay_gamma = args.exp_lr_decay_gamma,
             ssl_epochs = args.ssl_epochs,
             class_epochs = args.class_epochs,
-            n_tasks = args.n_tasks,
-            device = args.device, 
-            optimizer_type = args.optimizer_type, 
-            seed = args.seed,
-            temperature=args.temperature,
+            ssl_batch_size = args.ssl_batch_size,
+            class_batch_size = args.class_batch_size,
+            model_name = args.model_name, 
+            mask = args.mask,
             replay=args.replay,
-            exp_lr_decay_gamma = args.exp_lr_decay_gamma,
+            temperature=args.temperature,
+            learning_rate = args.learning_rate, 
+            seed = args.seed,
         )
     
 
@@ -69,6 +75,7 @@ if __name__ == "__main__":
     parser.add_argument("--batch_size", type=int, help="Batch size, default: 10", default=10)
     parser.add_argument("--learning_rate", type=float, help="Learning rate if set will not perform tuning and will use the given learning rate, default: None", default=None)
     parser.add_argument("--epochs", type=int, help="Maximum number of epochs, default: 1", default=1)
+    parser.add_argument("--mask", type=str, help="Whether to give the model the task, usually model uses the task to mask its output, default: 'None'", default=None)
 
     # Arguments related to CL
     parser.add_argument("--n_tasks", type=int, help="Number of tasks, default: 5", default=5)
@@ -122,6 +129,8 @@ if __name__ == "__main__":
             raise ValueError("class_epochs is for when using the ssl strategy")
         elif any(filter(lambda x: "--replay" in x, sys.argv)):
             raise ValueError("replay is for when using the ssl strategy")
+        elif any(filter(lambda x: "--mask" in x, sys.argv)):
+            raise ValueError("mask is for when using the regular strategy")
     if(args.strategy == "ssl"):
         if any(filter(lambda x: "--batch_size" in x, sys.argv)):
             raise ValueError("Cannot set batch size when using ssl strategy, please set ssl_batch_size and class_batch_size instead")
@@ -131,7 +140,8 @@ if __name__ == "__main__":
             raise ValueError("Cannot set percentage when using ssl strategy this is only for fixed replay stratify strategy")
         elif any(filter(lambda x: "--epochs" in x, sys.argv)):
             raise ValueError("Cannot set epochs when using ssl strategy, please set ssl_epochs and class_epochs instead")
-
+        elif any(filter(lambda x: "--mask" in x, sys.argv)):
+            raise ValueError("mask is for when using the regular strategy")
     
     # Run experiment
     main(args)

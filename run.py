@@ -1,107 +1,130 @@
-from torch import cuda, flatten, stack
 from torch.nn import CrossEntropyLoss
 from avalanche.training.templates import SupervisedTemplate
 from avalanche.training.supervised.strategy_wrappers import Naive
-from avalanche.training.plugins.early_stopping import EarlyStoppingPlugin
-import torchvision.transforms as transforms
-from torch.optim import lr_scheduler
-from avalanche.training.plugins.lr_scheduling import LRSchedulerPlugin
 from avalanche.training.plugins import ReplayPlugin
 from avalanche.training.storage_policy import ReservoirSamplingBuffer
-
 from custom_plugins import BatchSplitReplay, FixedBuffer, TaskExpLrDecay
+from give_model_task import GiveModelTask
 import data as data
-from utils import set_seed, get_eval_plugin, ssl_get_eval_plugin, get_optimizer, get_device, get_model, get_augmentations
+from utils import set_seed, get_eval_plugin, ssl_get_eval_plugin, get_optimizer, get_device, get_model, get_augmentations, format_arguments
 from train_utils import train, tune_hyperparams, done_train_ssl
 import self_supervised as ss
+from slune import get_csv_slog
+import os
 
-def regular(data_name, model_name, batch_size, learning_rate, epochs, n_tasks, device, optimizer_type, seed, exp_lr_decay_gamma):
+def regular(**kwargs):
     # SET THE SEED 
-    set_seed(seed)
+    set_seed(kwargs["seed"])
+    # TODO: might have to move this to after loading checkpoint to avoid errors 
+    # TODO: try running without setting seed and seeing if you can load checkpoint, if it works then we know that setting the seed is causing problems
 
     # PERFORM/LOAD HYPERPARAMETER TUNING
-    if learning_rate is None:
-        learning_rate = tune_hyperparams('classification', data_name, model_name, optimizer_type, selection_metric="final_train_accuracy")
+    if kwargs['learning_rate'] is None:
+        learning_rate = tune_hyperparams('classification', kwargs['data_name'], kwargs['model_name'], kwargs['optimizer_type'], selection_metric='final_train_accuracy')
+    else:
+        learning_rate = kwargs['learning_rate']
 
     # HANDLE DEVICE
-    device = get_device(device)
+    device = get_device(kwargs['device'])
 
     # CREATE NAME FOR LOGGING, CHECKPOINTING, ETC
-    name = data_name + "_" + str(n_tasks) + "_tasks" + "/" + model_name + "/" + optimizer_type + '/' + 'epochs_' + str(epochs) +  "/regular/lr_" + str(learning_rate)
-    print("Experiment name: " ,name)
+    params = format_arguments(**kwargs)
+    slog = get_csv_slog(params, root_dir='.')
+    name, _ = os.path.split(slog.get_current_path())
+    print("Experiment name: ", name)
 
     # GET DATA
-    scenario = data.get_data(data_name, n_tasks=n_tasks, seed=seed)
+    scenario = data.get_data(kwargs['data_name'], n_tasks=kwargs['n_tasks'], seed=kwargs['seed'])
 
     # CREATE MODEL
     num_classes = len([item for sublist in scenario.original_classes_in_exp for item in sublist]) # so we set the output layer to the correct size
-    model = get_model(model_name, device, num_classes)
+    model = get_model(kwargs['model_name'], device, num_classes)
 
     # CREATE OPTIMIZER
-    optimizer = get_optimizer(optimizer_type, model, learning_rate)
+    optimizer = get_optimizer(kwargs['optimizer_type'], model, learning_rate)
 
     # DEFINE THE EVALUATION PLUGIN and LOGGERS
     eval_plugin = get_eval_plugin(name, track_classes=[j for i in scenario.original_classes_in_exp for j in i])
 
     # DEFINE PLUGINS 
-    plugins = [TaskExpLrDecay(gamma=exp_lr_decay_gamma)]
+    plugins = [TaskExpLrDecay(gamma=kwargs['exp_lr_decay_gamma'])]
 
-    # CREATE THE STRATEGY INSTANCE (NAIVE)
-    cl_strategy = Naive(
-        model, optimizer,
-        criterion = CrossEntropyLoss(), train_epochs=epochs,
-        train_mb_size = batch_size, eval_mb_size = batch_size,
-        evaluator=eval_plugin,
-        device = device,
-        plugins=plugins
-    )
+    # CREATE THE STRATEGY INSTANCE
+    if kwargs['mask']:
+        cl_strategy = GiveModelTask(
+            model, 
+            optimizer,
+            criterion = CrossEntropyLoss(), 
+            train_epochs=kwargs['epochs'],
+            train_mb_size = kwargs['batch_size'], 
+            eval_mb_size = kwargs['batch_size'],
+            evaluator=eval_plugin,
+            device = device,
+            plugins=plugins
+        )
+    else:
+        cl_strategy = Naive(
+            model, 
+            optimizer,
+            criterion=CrossEntropyLoss(), 
+            train_epochs=kwargs['epochs'],
+            train_mb_size=kwargs['batch_size'], 
+            eval_mb_size = kwargs['batch_size'],
+            evaluator=eval_plugin,
+            device= device,
+            plugins=plugins
+        )
 
     # TRAINING LOOP
     train(scenario, cl_strategy, name, device)
 
-def fixed_replay_stratify(data_name, model_name, batch_size, learning_rate, epochs, n_tasks, device, optimizer_type, seed, data2_name, batch_ratio, percentage, exp_lr_decay_gamma):
+def fixed_replay_stratify(**kwargs):
     # SET THE SEED 
-    set_seed(seed)
+    set_seed(kwargs['seed'])
 
     # PERFORM/LOAD HYPERPARAMETER TUNING
-    if learning_rate is None:
-        learning_rate = tune_hyperparams('classification', data_name, model_name, optimizer_type, selection_metric="final_train_accuracy")
-
+    if kwargs['learning_rate'] is None:
+        learning_rate = tune_hyperparams('classification', kwargs['data_name'], kwargs['model_name'], kwargs['optimizer_type'], selection_metric="final_train_accuracy")
+    else:
+        learning_rate = kwargs['learning_rate']
+        
     # CREATE NAME FOR LOGGING, CHECKPOINTING, ETC
-    name = data_name + "_" + str(n_tasks) + "_tasks" + "/" + model_name + "/" + optimizer_type + '/' + 'epochs_' + str(epochs) +  "/fixed_replay_stratify/percent_" + str(percentage) + "_ratio_" + str(batch_ratio) + "_lr_" + str(learning_rate)
-    print("Experiment name: " ,name)
+    params = format_arguments(**kwargs)
+    slog = get_csv_slog(params, root_dir='')
+    name, _ = os.path.split(slog.get_current_path())
+    print("Experiment name: ", name)
 
     # HANDLE DEVICE
-    device = get_device(device)
+    device = get_device(kwargs['device'])
 
     # GET DATA
-    scenario, buffer_data = data.get_data(data_name, data2_name, n_tasks=n_tasks, strategy={"name":"stratify", "percentage":percentage}, seed=seed) 
+    scenario, buffer_data = data.get_data(kwargs['data_name'], kwargs['data2_name'], n_tasks=kwargs['n_tasks'], strategy={"name":"stratify", "percentage":kwargs['percentage']}, seed=kwargs['seed']) 
 
     # CREATE MODEL
     num_classes = len([item for sublist in scenario.original_classes_in_exp for item in sublist]) # so we set the output layer to the correct size
-    model = get_model(model_name, device, num_classes)
+    model = get_model(kwargs['model_name'], device, num_classes)
 
     # CREATE OPTIMIZER
-    optimizer = get_optimizer(optimizer_type, model, learning_rate)
+    optimizer = get_optimizer(kwargs['optimizer_type'], model, learning_rate)
 
     # DEFINE THE EVALUATION PLUGIN and LOGGERS
     eval_plugin = get_eval_plugin(name, track_classes={0: [0,1,2,3,4,5,6,7,8,9], 2: [0,1,2,3,4,5,6,7,8,9]}) #TODO: make this automatic for dataset
 
     # SETUP OTHER PLUGINS
     # Construct batch sizes for benchmark and replay
-    bs_bench = int(batch_size*batch_ratio)
-    bs_replay = batch_size - bs_bench
+    bs_bench = int(kwargs['batch_size']*kwargs['batch_ratio'])
+    bs_replay = kwargs['batch_size'] - bs_bench
     # Construct the plugins
     plugins = [
         BatchSplitReplay(FixedBuffer, buffer_data, max_size=len(buffer_data), bs1=bs_bench, bs2=bs_replay),
-        TaskExpLrDecay(gamma=exp_lr_decay_gamma)
+        TaskExpLrDecay(gamma=kwargs['exp_lr_decay_gamma'])
     ]
 
     # CREATE THE STRATEGY INSTANCE
     # Construct the strategy
     cl_strategy = SupervisedTemplate(
         model, optimizer,
-        CrossEntropyLoss(), train_mb_size=batch_size, train_epochs=epochs, eval_mb_size=batch_size,
+        CrossEntropyLoss(), train_mb_size=kwargs['batch_size'], train_epochs=kwargs['epochs'], eval_mb_size=kwargs['batch_size'],
         evaluator=eval_plugin,
         device = device,
         plugins=plugins
@@ -110,46 +133,49 @@ def fixed_replay_stratify(data_name, model_name, batch_size, learning_rate, epoc
     # TRAINING LOOP
     train(scenario, cl_strategy, name, device)
 
-def ssl(data_name, data2_name, model_name, ssl_batch_size, class_batch_size, learning_rate, ssl_epochs, class_epochs, n_tasks, device, optimizer_type, seed, temperature, replay, exp_lr_decay_gamma):
+def ssl(**kwargs):
     # SET THE SEED 
-    set_seed(seed)
+    set_seed(kwargs['seed'])
 
     # PERFORM/LOAD HYPERPARAMETER TUNING
-    if learning_rate is None or temperature is None:
-        tune_learning_rate, tune_temperature = tune_hyperparams('ssl', data_name, model_name, optimizer_type, selection_metric="final_train_accuracy")
-        if learning_rate is None:
+    if kwargs['learning_rate'] is None or kwargs['temperature'] is None:
+        tune_learning_rate, tune_temperature = tune_hyperparams('ssl', kwargs['data_name'], kwargs['model_name'], kwargs['optimizer_type'], selection_metric="final_train_accuracy")
+        if kwargs['learning_rate'] is None:
             learning_rate = tune_learning_rate
-        if temperature is None:
+        else:
+            learning_rate = kwargs['learning_rate']
+        if kwargs['temperature'] is None:
             temperature = tune_temperature
+        else:
+            temperature = kwargs['temperature']
 
     # CREATE NAME FOR LOGGING, CHECKPOINTING, ETC
-    if replay > 0:
-        name = data_name + "_" + str(n_tasks) + "_tasks" + "/" + model_name + "/" + optimizer_type +  "/ssl/lr_" + str(learning_rate) + "_temp_" + str(temperature) + "_reservoir_buffer_" + str(replay) + "_ssl"
-    else:
-        name = data_name + "_" + str(n_tasks) + "_tasks" + "/" + model_name + "/" + optimizer_type +  "/ssl/lr_" + str(learning_rate) + "_temp_" + str(temperature) + "_ssl"
-    print("Experiment name: " ,name)
+    params = format_arguments(**kwargs)
+    slog = get_csv_slog(params, root_dir='')
+    name, _ = os.path.split(slog.get_current_path())
+    print("Experiment name: ", name)
 
     # HANDLE DEVICE
-    device = get_device(device)
+    device = get_device(kwargs['device'])
 
     # GET DATA
-    ssl_scenario = data.get_data(data_name, n_tasks=n_tasks, seed=seed, no_augmentation=True) # We turn off augmentations as we will be doing them as part of SSL
-    class_scenario = data.get_data(data2_name, seed=seed)
+    ssl_scenario = data.get_data(kwargs['data_name'], n_tasks=kwargs['n_tasks'], seed=kwargs['seed'], no_augmentation=True) # We turn off augmentations as we will be doing them as part of SSL
+    class_scenario = data.get_data(kwargs['data2_name'], seed=kwargs['seed'])
 
     # CREATE MODEL
     num_classes = len([item for sublist in class_scenario.original_classes_in_exp for item in sublist]) # so we set the output layer to the correct size
-    model = get_model("SimCLR_" + model_name, device, num_classes)
+    model = get_model("SimCLR_" + kwargs['model_name'], device, num_classes)
 
     # CREATE OPTIMIZER
-    optimizer = get_optimizer(optimizer_type, model, learning_rate)
+    optimizer = get_optimizer(kwargs['optimizer_type'], model, learning_rate)
 
     # SETUP OTHER PLUGINS
     # Construct the plugins
-    plugins = [TaskExpLrDecay(gamma=exp_lr_decay_gamma)]
-    if replay > 0:
-        storage_policy = ReservoirSamplingBuffer(max_size=replay)
+    plugins = [TaskExpLrDecay(gamma=kwargs['exp_lr_decay_gamma'])]
+    if kwargs['replay'] > 0:
+        storage_policy = ReservoirSamplingBuffer(max_size=kwargs['replay'])
         replay_plugin = ReplayPlugin(
-            mem_size=replay, storage_policy=storage_policy
+            mem_size=kwargs['replay'], storage_policy=storage_policy
         )
         plugins.append(replay_plugin)
 
@@ -162,9 +188,13 @@ def ssl(data_name, data2_name, model_name, ssl_batch_size, class_batch_size, lea
     # PERFORM SSL
     # construct the strategy
     ssl_strategy = ss.SimCLR(
-        model, optimizer,
-        augmentations = augs, temperature = temperature,
-        train_mb_size = ssl_batch_size, train_epochs = ssl_epochs, eval_mb_size = ssl_batch_size,
+        model, 
+        optimizer,
+        augmentations = augs, 
+        temperature = temperature,
+        train_mb_size = kwargs['ssl_batch_size'], 
+        train_epochs = kwargs['ssl_epochs'], 
+        eval_mb_size = kwargs['ssl_batch_size'],
         evaluator = eval_plugin,
         device = device,
         plugins = plugins
@@ -174,12 +204,15 @@ def ssl(data_name, data2_name, model_name, ssl_batch_size, class_batch_size, lea
     done_train_ssl(model, optimizer) # absorb this into training strategy, is there after all experiences callback?
 
     # TRAIN CLASSIFIER
-    name = name[:-4] + "_classification"
+    name = os.path.join(name, "classification")
     eval_plugin = get_eval_plugin(name, track_classes=[j for i in class_scenario.original_classes_in_exp for j in i])
     class_strategy = Naive(
-        model, optimizer,
-        criterion = CrossEntropyLoss(), train_epochs = class_epochs,
-        train_mb_size = class_batch_size, eval_mb_size = class_batch_size,
+        model, 
+        optimizer,
+        criterion = CrossEntropyLoss(), 
+        train_epochs = kwargs['class_epochs'],
+        train_mb_size = kwargs['class_batch_size'], 
+        eval_mb_size = kwargs['class_batch_size'],
         evaluator = eval_plugin,
         device = device,
         # plugins = []
